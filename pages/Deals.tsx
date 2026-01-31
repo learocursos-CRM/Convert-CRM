@@ -7,310 +7,310 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
 const Deals = () => {
-  const { deals, leads, waitingList, updateDealStage, updateDeal, deleteDeal, moveToWaitingList, restoreFromWaitingList, lossReasons, waitingReasons, globalSearch } = useCRM();
-  const [editingDeal, setEditingDeal] = useState<Deal | null>(null);
-  
-  const navigate = useNavigate();
-  const location = useLocation();
+    const { deals, leads, waitingList, updateDealStage, updateDeal, deleteDeal, moveToWaitingList, restoreFromWaitingList, lossReasons, waitingReasons, globalSearch } = useCRM();
+    const [editingDeal, setEditingDeal] = useState<Deal | null>(null);
 
-  // Determine view mode based on URL
-  const viewMode = location.pathname.includes('waiting-list') ? 'waiting' : 'pipeline';
-  
-  // States for Loss Modal
-  const [dealIdToLose, setDealIdToLose] = useState<string | null>(null);
+    const navigate = useNavigate();
+    const location = useLocation();
 
-  // States for Waiting List Modal
-  const [dealIdToWait, setDealIdToWait] = useState<string | null>(null);
-  const [waitingReason, setWaitingReason] = useState(waitingReasons[0]);
-  const [waitingNotes, setWaitingNotes] = useState('');
+    // Determine view mode based on URL
+    const viewMode = location.pathname.includes('waiting-list') ? 'waiting' : 'pipeline';
 
-  // ORDEM RIGIDA DO PIPELINE
-  const pipelineStages = [
-    DealStage.NEW,
-    DealStage.CONTACT,
-    DealStage.QUALIFIED,
-    DealStage.PROPOSAL,
-    DealStage.DECISION,
-    DealStage.WON,
-    DealStage.LOST
-  ];
+    // States for Loss Modal
+    const [dealIdToLose, setDealIdToLose] = useState<string | null>(null);
 
-  const getLead = (id: string) => leads.find(l => l.id === id);
+    // States for Waiting List Modal
+    const [dealIdToWait, setDealIdToWait] = useState<string | null>(null);
+    const [waitingReason, setWaitingReason] = useState(waitingReasons[0]);
+    const [waitingNotes, setWaitingNotes] = useState('');
 
-  const getDealsByStage = (stage: DealStage) => {
-    // Filter by stage first
-    const stageDeals = deals.filter(d => d.stage === stage);
-    
-    // Apply Global Search filtering
-    if (!globalSearch) return stageDeals;
+    // ORDEM RIGIDA DO PIPELINE
+    const pipelineStages = [
+        DealStage.NEW,
+        DealStage.CONTACT,
+        DealStage.QUALIFIED,
+        DealStage.PROPOSAL,
+        DealStage.DECISION,
+        DealStage.WON,
+        DealStage.LOST
+    ];
 
-    const term = globalSearch.toLowerCase();
-    return stageDeals.filter(d => {
-        const lead = getLead(d.leadId);
-        return d.title.toLowerCase().includes(term) || 
-               lead?.name.toLowerCase().includes(term) ||
-               lead?.company.toLowerCase().includes(term);
-    });
-  };
+    const getLead = (id: string) => leads.find(l => l.id === id);
 
-  const getNextStage = (current: DealStage): DealStage | null => {
-    const currentIndex = pipelineStages.indexOf(current);
-    if (currentIndex === -1 || currentIndex >= pipelineStages.length - 2) return null; 
-    return pipelineStages[currentIndex + 1];
-  };
+    const getDealsByStage = (stage: DealStage) => {
+        // Filter by stage first
+        const stageDeals = deals.filter(d => d.stage === stage);
 
-  const getPrevStage = (current: DealStage): DealStage | null => {
-    const currentIndex = pipelineStages.indexOf(current);
-    if (currentIndex <= 0) return null;
-    if (current === DealStage.WON || current === DealStage.LOST) return DealStage.DECISION;
-    return pipelineStages[currentIndex - 1];
-  };
+        // Apply Global Search filtering
+        if (!globalSearch) return stageDeals;
 
-  const handleMoveStage = (dealId: string, nextStage: DealStage | null) => {
-    if (!nextStage) return;
-    try {
-        if (nextStage === DealStage.LOST) {
-            setDealIdToLose(dealId);
-        } else {
-            updateDealStage(dealId, nextStage);
-        }
-    } catch (error) {
-        console.error("Erro ao mover card:", error);
-    }
-  };
-
-  const handleInitiateWait = (dealId: string) => {
-      setDealIdToWait(dealId);
-      setWaitingReason(waitingReasons[0]);
-      setWaitingNotes('');
-  };
-
-  const handleConfirmWait = (e: React.FormEvent) => {
-      e.preventDefault();
-      if(dealIdToWait) {
-          moveToWaitingList(dealIdToWait, waitingReason, waitingNotes);
-          setDealIdToWait(null);
-      }
-  };
-
-  const handleConfirmLoss = (reason: string) => {
-    if (dealIdToLose) {
-        updateDeal(dealIdToLose, { lossReason: reason });
-        updateDealStage(dealIdToLose, DealStage.LOST);
-        setDealIdToLose(null);
-    }
-  };
-
-  const handleUpdateDeal = (e: React.FormEvent) => {
-    e.preventDefault();
-    if(editingDeal) {
-        updateDeal(editingDeal.id, {
-            value: editingDeal.value || 0,
-            title: editingDeal.title,
-            probability: editingDeal.probability
+        const term = globalSearch.toLowerCase();
+        return stageDeals.filter(d => {
+            const lead = getLead(d.leadId);
+            return d.title.toLowerCase().includes(term) ||
+                lead?.name.toLowerCase().includes(term) ||
+                lead?.company.toLowerCase().includes(term);
         });
-        setEditingDeal(null);
-    }
-  };
+    };
 
-  return (
-    <div className="h-full flex flex-col relative">
-      <div className="mb-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-            <h2 className="text-3xl font-bold text-gray-800">
-                {viewMode === 'pipeline' ? 'Pipeline de Matrículas' : 'Lista de Espera'}
-            </h2>
-            <p className="text-gray-500">
-                {viewMode === 'pipeline' 
-                    ? 'Gerencie o fluxo de matrículas dos cursos.' 
-                    : 'Leads aguardando abertura de turmas ou vagas.'}
-            </p>
-        </div>
+    const getNextStage = (current: DealStage): DealStage | null => {
+        const currentIndex = pipelineStages.indexOf(current);
+        if (currentIndex === -1 || currentIndex >= pipelineStages.length - 2) return null;
+        return pipelineStages[currentIndex + 1];
+    };
 
-        <div className="bg-white border border-gray-200 p-1 rounded-lg flex shadow-sm">
-            <button 
-                onClick={() => navigate('/deals')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition ${
-                    viewMode === 'pipeline' ? 'bg-indigo-50 text-indigo-600' : 'text-gray-500 hover:bg-gray-50'
-                }`}
-            >
-                <LayoutIcon size={16}/> Pipeline
-            </button>
-            <button 
-                onClick={() => navigate('/waiting-list')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition ${
-                    viewMode === 'waiting' ? 'bg-indigo-50 text-indigo-600' : 'text-gray-500 hover:bg-gray-50'
-                }`}
-            >
-                <List size={16}/> Lista de Espera 
-                <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full text-xs">{waitingList.length}</span>
-            </button>
-        </div>
-      </div>
+    const getPrevStage = (current: DealStage): DealStage | null => {
+        const currentIndex = pipelineStages.indexOf(current);
+        if (currentIndex <= 0) return null;
+        if (current === DealStage.WON || current === DealStage.LOST) return DealStage.DECISION;
+        return pipelineStages[currentIndex - 1];
+    };
 
-      {viewMode === 'pipeline' ? (
-          <div className="flex-1 overflow-x-auto">
-            <div className="flex gap-4 min-w-[2400px] h-full pb-4 px-1">
-              {pipelineStages.map(stage => (
-                <KanbanColumn 
-                  key={stage} 
-                  stage={stage} 
-                  deals={getDealsByStage(stage)} 
-                  getLead={getLead}
-                  onMove={handleMoveStage}
-                  onWait={handleInitiateWait}
-                  onEdit={setEditingDeal}
-                  onDelete={deleteDeal}
-                  getNextStage={getNextStage}
-                  getPrevStage={getPrevStage}
-                />
-              ))}
-            </div>
-          </div>
-      ) : (
-          <WaitingListView 
-            waitingList={waitingList} 
-            getLead={getLead} 
-            onRestore={restoreFromWaitingList} 
-          />
-      )}
+    const handleMoveStage = (dealId: string, nextStage: DealStage | null) => {
+        if (!nextStage) return;
+        try {
+            if (nextStage === DealStage.LOST) {
+                setDealIdToLose(dealId);
+            } else {
+                updateDealStage(dealId, nextStage);
+            }
+        } catch (error) {
+            console.error("Erro ao mover card:", error);
+        }
+    };
 
-      {/* Edit Modal */}
-      {editingDeal && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6">
-                <div className="flex justify-between items-center mb-6">
-                    <h3 className="text-xl font-bold text-gray-900">Editar Negócio</h3>
-                    <button onClick={() => setEditingDeal(null)}><X size={24} className="text-gray-400 hover:text-gray-600"/></button>
-                </div>
-                <form onSubmit={handleUpdateDeal} className="space-y-4">
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Título</label>
-                        <input type="text" className="w-full border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500"
-                            value={editingDeal.title} onChange={e => setEditingDeal({...editingDeal, title: e.target.value})} />
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Valor (R$)</label>
-                        <input type="number" step="0.01" className="w-full border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500"
-                            value={editingDeal.value} 
-                            onChange={e => setEditingDeal({...editingDeal, value: parseFloat(e.target.value)})} 
-                        />
-                    </div>
-                     <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Probabilidade (%)</label>
-                        <input type="number" min="0" max="100" className="w-full border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500"
-                            value={editingDeal.probability} onChange={e => setEditingDeal({...editingDeal, probability: parseInt(e.target.value)})} />
-                    </div>
-                    <div className="pt-4 flex gap-3">
-                         <button type="button" onClick={() => setEditingDeal(null)} className="flex-1 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">Cancelar</button>
-                         <button type="submit" className="flex-1 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">Salvar</button>
-                    </div>
-                </form>
-            </div>
-          </div>
-      )}
+    const handleInitiateWait = (dealId: string) => {
+        setDealIdToWait(dealId);
+        setWaitingReason(waitingReasons[0]);
+        setWaitingNotes('');
+    };
 
-      {/* LOSS REASON MODAL */}
-      {dealIdToLose && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-0 overflow-hidden animate-fade-in">
-                <div className="bg-red-50 p-6 border-b border-red-100 flex flex-col items-center text-center">
-                    <div className="bg-red-100 p-3 rounded-full mb-3">
-                        <AlertTriangle className="text-red-600" size={32} />
-                    </div>
-                    <h3 className="text-xl font-bold text-red-900">Motivo da Perda</h3>
-                    <p className="text-sm text-red-700 mt-1">
-                        Por que este aluno não foi matriculado? <br/>
-                        <span className="font-semibold">Esta informação é obrigatória.</span>
+    const handleConfirmWait = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (dealIdToWait) {
+            moveToWaitingList(dealIdToWait, waitingReason, waitingNotes);
+            setDealIdToWait(null);
+        }
+    };
+
+    const handleConfirmLoss = (reason: string) => {
+        if (dealIdToLose) {
+            updateDeal(dealIdToLose, { lossReason: reason });
+            updateDealStage(dealIdToLose, DealStage.LOST);
+            setDealIdToLose(null);
+        }
+    };
+
+    const handleUpdateDeal = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (editingDeal) {
+            updateDeal(editingDeal.id, {
+                value: editingDeal.value || 0,
+                title: editingDeal.title,
+                probability: editingDeal.probability
+            });
+            setEditingDeal(null);
+        }
+    };
+
+    return (
+        <div className="h-full flex flex-col relative">
+            <div className="mb-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <div>
+                    <h2 className="text-3xl font-bold text-gray-800">
+                        {viewMode === 'pipeline' ? 'Pipeline de Matrículas' : 'Lista de Espera'}
+                    </h2>
+                    <p className="text-gray-500">
+                        {viewMode === 'pipeline'
+                            ? 'Gerencie o fluxo de matrículas dos cursos.'
+                            : 'Leads aguardando abertura de turmas ou vagas.'}
                     </p>
                 </div>
-                
-                <div className="p-4 space-y-2">
-                    {lossReasons.map((reason, idx) => (
-                        <button 
-                            key={idx}
-                            onClick={() => handleConfirmLoss(reason)}
-                            className="w-full text-left px-4 py-3 rounded-lg border border-gray-200 text-gray-700 hover:bg-red-50 hover:border-red-200 hover:text-red-800 transition flex items-center justify-between group"
-                        >
-                            <span className="font-medium">{reason}</span>
-                            <ArrowRight size={16} className="opacity-0 group-hover:opacity-100 transition-opacity text-red-500"/>
-                        </button>
-                    ))}
-                </div>
 
-                <div className="p-4 bg-gray-50 border-t border-gray-100">
-                    <button 
-                        onClick={() => setDealIdToLose(null)}
-                        className="w-full py-2.5 text-gray-500 font-medium hover:text-gray-800 transition"
+                <div className="bg-white border border-gray-200 p-1 rounded-lg flex shadow-sm">
+                    <button
+                        onClick={() => navigate('/deals')}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition ${viewMode === 'pipeline' ? 'bg-indigo-50 text-indigo-600' : 'text-gray-500 hover:bg-gray-50'
+                            }`}
                     >
-                        Cancelar
+                        <LayoutIcon size={16} /> Pipeline
+                    </button>
+                    <button
+                        onClick={() => navigate('/waiting-list')}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition ${viewMode === 'waiting' ? 'bg-indigo-50 text-indigo-600' : 'text-gray-500 hover:bg-gray-50'
+                            }`}
+                    >
+                        <List size={16} /> Lista de Espera
+                        <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full text-xs">{waitingList.length}</span>
                     </button>
                 </div>
             </div>
-        </div>
-      )}
 
-      {/* WAITING LIST MODAL */}
-      {dealIdToWait && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6">
-                <div className="flex flex-col items-center text-center mb-6">
-                    <div className="bg-amber-100 p-3 rounded-full mb-3">
-                        <PauseCircle className="text-amber-600" size={32} />
+            {viewMode === 'pipeline' ? (
+                <div className="flex-1 overflow-x-auto">
+                    <div className="flex gap-4 min-w-[2400px] h-full pb-4 px-1">
+                        {pipelineStages.map(stage => (
+                            <KanbanColumn
+                                key={stage}
+                                stage={stage}
+                                deals={getDealsByStage(stage)}
+                                getLead={getLead}
+                                onMove={handleMoveStage}
+                                onWait={handleInitiateWait}
+                                onEdit={setEditingDeal}
+                                onDelete={deleteDeal}
+                                getNextStage={getNextStage}
+                                getPrevStage={getPrevStage}
+                            />
+                        ))}
                     </div>
-                    <h3 className="text-xl font-bold text-gray-900">Mover para Lista de Espera</h3>
-                    <p className="text-sm text-gray-500">
-                        O negócio sairá do Pipeline, mas não será marcado como perdido.
-                    </p>
                 </div>
-                
-                <form onSubmit={handleConfirmWait} className="space-y-4">
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Motivo da Espera</label>
-                        <select 
-                            required
-                            className="w-full border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500"
-                            value={waitingReason}
-                            onChange={(e) => setWaitingReason(e.target.value)}
-                        >
-                            {waitingReasons.map((r, i) => <option key={i} value={r}>{r}</option>)}
-                        </select>
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Observações (Opcional)</label>
-                        <textarea 
-                            rows={3}
-                            className="w-full border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
-                            placeholder="Ex: Aluno aguarda turma de sábado..."
-                            value={waitingNotes}
-                            onChange={(e) => setWaitingNotes(e.target.value)}
-                        />
-                    </div>
+            ) : (
+                <WaitingListView
+                    waitingList={waitingList}
+                    onRestore={restoreFromWaitingList}
+                />
+            )}
 
-                    <div className="pt-2 flex gap-3">
-                         <button 
-                            type="button" 
-                            onClick={() => setDealIdToWait(null)} 
-                            className="flex-1 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
-                         >
-                            Cancelar
-                         </button>
-                         <button 
-                            type="submit" 
-                            className="flex-1 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700"
-                         >
-                            Confirmar Espera
-                         </button>
+            {/* Edit Modal */}
+            {editingDeal && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6">
+                        <div className="flex justify-between items-center mb-6">
+                            <h3 className="text-xl font-bold text-gray-900">Editar Negócio</h3>
+                            <button onClick={() => setEditingDeal(null)}><X size={24} className="text-gray-400 hover:text-gray-600" /></button>
+                        </div>
+                        <form onSubmit={handleUpdateDeal} className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Título</label>
+                                <input type="text" className="w-full border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500"
+                                    value={editingDeal.title} onChange={e => setEditingDeal({ ...editingDeal, title: e.target.value })} />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Valor (R$)</label>
+                                <input type="number" step="0.01" className="w-full border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500"
+                                    value={editingDeal.value}
+                                    onChange={e => setEditingDeal({ ...editingDeal, value: parseFloat(e.target.value) })}
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Probabilidade (%)</label>
+                                <input type="number" min="0" max="100" className="w-full border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500"
+                                    value={editingDeal.probability} onChange={e => setEditingDeal({ ...editingDeal, probability: parseInt(e.target.value) })} />
+                            </div>
+                            <div className="pt-4 flex gap-3">
+                                <button type="button" onClick={() => setEditingDeal(null)} className="flex-1 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">Cancelar</button>
+                                <button type="submit" className="flex-1 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">Salvar</button>
+                            </div>
+                        </form>
                     </div>
-                </form>
-            </div>
-          </div>
-      )}
-    </div>
-  );
+                </div>
+            )}
+
+            {/* LOSS REASON MODAL */}
+            {dealIdToLose && (
+                <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-0 overflow-hidden animate-fade-in">
+                        <div className="bg-red-50 p-6 border-b border-red-100 flex flex-col items-center text-center">
+                            <div className="bg-red-100 p-3 rounded-full mb-3">
+                                <AlertTriangle className="text-red-600" size={32} />
+                            </div>
+                            <h3 className="text-xl font-bold text-red-900">Motivo da Perda</h3>
+                            <p className="text-sm text-red-700 mt-1">
+                                Por que este aluno não foi matriculado? <br />
+                                <span className="font-semibold">Esta informação é obrigatória.</span>
+                            </p>
+                        </div>
+
+                        <div className="p-4 space-y-2">
+                            {lossReasons.map((reason, idx) => (
+                                <button
+                                    key={idx}
+                                    onClick={() => handleConfirmLoss(reason)}
+                                    className="w-full text-left px-4 py-3 rounded-lg border border-gray-200 text-gray-700 hover:bg-red-50 hover:border-red-200 hover:text-red-800 transition flex items-center justify-between group"
+                                >
+                                    <span className="font-medium">{reason}</span>
+                                    <ArrowRight size={16} className="opacity-0 group-hover:opacity-100 transition-opacity text-red-500" />
+                                </button>
+                            ))}
+                        </div>
+
+                        <div className="p-4 bg-gray-50 border-t border-gray-100">
+                            <button
+                                onClick={() => setDealIdToLose(null)}
+                                className="w-full py-2.5 text-gray-500 font-medium hover:text-gray-800 transition"
+                            >
+                                Cancelar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* WAITING LIST MODAL */}
+            {dealIdToWait && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6">
+                        <div className="flex flex-col items-center text-center mb-6">
+                            <div className="bg-amber-100 p-3 rounded-full mb-3">
+                                <PauseCircle className="text-amber-600" size={32} />
+                            </div>
+                            <h3 className="text-xl font-bold text-gray-900">Mover para Lista de Espera</h3>
+                            <p className="text-sm text-gray-500">
+                                O negócio sairá do Pipeline, mas não será marcado como perdido.
+                            </p>
+                        </div>
+
+                        <form onSubmit={handleConfirmWait} className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Motivo da Espera</label>
+                                <select
+                                    required
+                                    className="w-full border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500"
+                                    value={waitingReason}
+                                    onChange={(e) => setWaitingReason(e.target.value)}
+                                >
+                                    {waitingReasons.map((r, i) => <option key={i} value={r}>{r}</option>)}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Observações (Opcional)</label>
+                                <textarea
+                                    rows={3}
+                                    className="w-full border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+                                    placeholder="Ex: Aluno aguarda turma de sábado..."
+                                    value={waitingNotes}
+                                    onChange={(e) => setWaitingNotes(e.target.value)}
+                                />
+                            </div>
+
+                            <div className="pt-2 flex gap-3">
+                                <button
+                                    type="button"
+                                    onClick={() => setDealIdToWait(null)}
+                                    className="flex-1 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    type="submit"
+                                    className="flex-1 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700"
+                                >
+                                    Confirmar Espera
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
 };
 
-const WaitingListView = ({ waitingList, getLead, onRestore }: { waitingList: WaitingListItem[], getLead: (id: string) => Lead | undefined, onRestore: any }) => {
+const WaitingListView = ({ waitingList, onRestore }: { waitingList: WaitingListItem[], onRestore: any }) => {
+    const { leads } = useCRM();
+    const getLead = (id: string) => leads.find(l => l.id === id);
+
     const [selectedCourse, setSelectedCourse] = useState('ALL');
 
     // Extract unique courses for filter
@@ -327,10 +327,10 @@ const WaitingListView = ({ waitingList, getLead, onRestore }: { waitingList: Wai
 
     const handleExportPDF = () => {
         const doc = new jsPDF();
-        
+
         doc.setFontSize(18);
         doc.text('Lista de Espera - CRM Educacional', 14, 22);
-        
+
         doc.setFontSize(11);
         doc.text(`Data de emissão: ${new Date().toLocaleDateString()}`, 14, 30);
         if (selectedCourse !== 'ALL') {
@@ -366,7 +366,7 @@ const WaitingListView = ({ waitingList, getLead, onRestore }: { waitingList: Wai
             <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex justify-between items-center flex-wrap gap-4">
                 <div className="flex items-center gap-2">
                     <Filter size={18} className="text-gray-500" />
-                    <select 
+                    <select
                         value={selectedCourse}
                         onChange={(e) => setSelectedCourse(e.target.value)}
                         className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500 min-w-[200px]"
@@ -378,11 +378,11 @@ const WaitingListView = ({ waitingList, getLead, onRestore }: { waitingList: Wai
                     </select>
                 </div>
 
-                <button 
+                <button
                     onClick={handleExportPDF}
                     className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm font-medium transition shadow-sm"
                 >
-                    <FileText size={16} className="text-red-600"/> Exportar PDF
+                    <FileText size={16} className="text-red-600" /> Exportar PDF
                 </button>
             </div>
 
@@ -413,12 +413,12 @@ const WaitingListView = ({ waitingList, getLead, onRestore }: { waitingList: Wai
                                             <div className="flex flex-col gap-1.5">
                                                 {lead?.phone && (
                                                     <a href={`tel:${lead.phone}`} className="flex items-center gap-1.5 text-xs text-gray-600 hover:text-indigo-600 font-medium">
-                                                        <Phone size={12}/> {lead.phone}
+                                                        <Phone size={12} /> {lead.phone}
                                                     </a>
                                                 )}
                                                 {lead?.email && (
                                                     <a href={`mailto:${lead.email}`} className="flex items-center gap-1.5 text-xs text-gray-600 hover:text-indigo-600">
-                                                        <Mail size={12}/> {lead.email}
+                                                        <Mail size={12} /> {lead.email}
                                                     </a>
                                                 )}
                                                 {!lead?.phone && !lead?.email && <span className="text-xs text-gray-400">Sem contato</span>}
@@ -426,7 +426,7 @@ const WaitingListView = ({ waitingList, getLead, onRestore }: { waitingList: Wai
                                         </td>
                                         <td className="p-4">
                                             <div className="flex items-center gap-1.5 text-xs text-indigo-700 font-medium bg-indigo-50 p-1.5 rounded w-fit">
-                                                <GraduationCap size={14}/> {item.course}
+                                                <GraduationCap size={14} /> {item.course}
                                             </div>
                                         </td>
                                         <td className="p-4 max-w-xs">
@@ -435,15 +435,15 @@ const WaitingListView = ({ waitingList, getLead, onRestore }: { waitingList: Wai
                                         </td>
                                         <td className="p-4 text-sm text-gray-600">
                                             <div className="flex items-center gap-1">
-                                                <Clock size={14}/> {new Date(item.createdAt).toLocaleDateString()}
+                                                <Clock size={14} /> {new Date(item.createdAt).toLocaleDateString()}
                                             </div>
                                         </td>
                                         <td className="p-4 text-right">
-                                            <button 
+                                            <button
                                                 onClick={() => onRestore(item.id)}
                                                 className="text-xs bg-white border border-green-200 text-green-700 px-3 py-1.5 rounded hover:bg-green-50 hover:border-green-300 transition flex items-center gap-1 ml-auto font-medium"
                                             >
-                                                <Undo2 size={14}/> Retomar
+                                                <Undo2 size={14} /> Retomar
                                             </button>
                                         </td>
                                     </tr>
@@ -452,7 +452,7 @@ const WaitingListView = ({ waitingList, getLead, onRestore }: { waitingList: Wai
                         ) : (
                             <tr>
                                 <td colSpan={6} className="p-12 text-center text-gray-400">
-                                    <PauseCircle size={48} className="mx-auto mb-2 opacity-50"/>
+                                    <PauseCircle size={48} className="mx-auto mb-2 opacity-50" />
                                     {waitingList.length === 0 ? "Ninguém na lista de espera no momento." : "Nenhum registro encontrado para este filtro."}
                                 </td>
                             </tr>
@@ -465,22 +465,22 @@ const WaitingListView = ({ waitingList, getLead, onRestore }: { waitingList: Wai
 };
 
 interface KanbanColumnProps {
-  stage: DealStage;
-  deals: Deal[];
-  getLead: (id: string) => Lead | undefined;
-  onMove: (id: string, s: DealStage | null) => void;
-  onWait: (id: string) => void;
-  onEdit: (d: Deal) => void;
-  onDelete: (id: string) => void;
-  getNextStage: (s: DealStage) => DealStage | null;
-  getPrevStage: (s: DealStage) => DealStage | null;
+    stage: DealStage;
+    deals: Deal[];
+    getLead: (id: string) => Lead | undefined;
+    onMove: (id: string, s: DealStage | null) => void;
+    onWait: (id: string) => void;
+    onEdit: (d: Deal) => void;
+    onDelete: (id: string) => void;
+    getNextStage: (s: DealStage) => DealStage | null;
+    getPrevStage: (s: DealStage) => DealStage | null;
 }
 
 const KanbanColumn: React.FC<KanbanColumnProps> = ({ stage, deals, getLead, onMove, onWait, onEdit, onDelete, getNextStage, getPrevStage }) => {
     const totalValue = deals.reduce((acc, d) => acc + d.value, 0);
 
     const getStageColor = (s: DealStage) => {
-        switch(s) {
+        switch (s) {
             case DealStage.NEW: return 'border-t-4 border-gray-400';
             case DealStage.CONTACT: return 'border-t-4 border-blue-400';
             case DealStage.QUALIFIED: return 'border-t-4 border-indigo-400';
@@ -498,7 +498,7 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({ stage, deals, getLead, onMo
                 <h3 className="font-bold text-gray-800 text-sm truncate uppercase tracking-tight" title={stage}>{stage}</h3>
                 <span className="bg-white border border-gray-200 text-gray-600 px-2 py-0.5 rounded-full text-xs font-medium shadow-sm">{deals.length}</span>
             </div>
-            
+
             <div className="mb-4 px-1 flex justify-between items-end border-b border-gray-200 pb-2">
                 <div>
                     <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Total Previsto</p>
@@ -508,10 +508,10 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({ stage, deals, getLead, onMo
 
             <div className="space-y-3 overflow-y-auto custom-scrollbar flex-1 pr-1 min-h-[100px]">
                 {deals.map(deal => (
-                    <DealCard 
-                        key={deal.id} 
-                        deal={deal} 
-                        lead={getLead(deal.leadId)} 
+                    <DealCard
+                        key={deal.id}
+                        deal={deal}
+                        lead={getLead(deal.leadId)}
                         stage={stage}
                         onMove={onMove}
                         onWait={onWait}
@@ -536,9 +536,9 @@ const DealCard = ({ deal, lead, stage, onMove, onWait, onEdit, onDelete, nextSta
     if (classLower.includes('trabalhador')) {
         classificationColor = 'bg-teal-50 text-teal-700 border border-teal-100';
     } else if (classLower.includes('dependente')) {
-            classificationColor = 'bg-cyan-50 text-cyan-700 border border-cyan-100';
+        classificationColor = 'bg-cyan-50 text-cyan-700 border border-cyan-100';
     } else if (classLower.includes('comunidade')) {
-            classificationColor = 'bg-slate-50 text-slate-700 border border-slate-200';
+        classificationColor = 'bg-slate-50 text-slate-700 border border-slate-200';
     }
 
     useEffect(() => {
@@ -559,107 +559,106 @@ const DealCard = ({ deal, lead, stage, onMove, onWait, onEdit, onDelete, nextSta
     return (
         <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition group relative flex flex-col gap-2">
             <div className="flex justify-between items-start relative">
-                <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${
-                    deal.probability >= 80 ? 'bg-green-100 text-green-700' : 
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${deal.probability >= 80 ? 'bg-green-100 text-green-700' :
                     deal.probability <= 30 ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'
-                }`}>
+                    }`}>
                     {deal.probability}% Prob.
                 </span>
-                
+
                 <div className="relative" ref={menuRef}>
-                    <button 
+                    <button
                         onClick={() => setShowMenu(!showMenu)}
                         className="text-gray-300 hover:text-gray-600 p-1 rounded hover:bg-gray-100"
                     >
-                        <MoreHorizontal size={16}/>
+                        <MoreHorizontal size={16} />
                     </button>
-                    
+
                     {showMenu && (
                         <div className="absolute right-0 top-full mt-1 w-56 bg-white border border-gray-200 rounded-lg shadow-xl z-50 py-1 flex flex-col">
-                            <button 
+                            <button
                                 onClick={() => handleAction(() => onEdit(deal))}
                                 className="px-4 py-3 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
                             >
-                                <Edit2 size={16} className="text-gray-400"/> Editar Dados
+                                <Edit2 size={16} className="text-gray-400" /> Editar Dados
                             </button>
-                            
+
                             <div className="border-t border-gray-100 my-1"></div>
-                            
+
                             {/* VOLTAR ETAPA */}
                             {prevStage && (
-                                <button 
+                                <button
                                     onClick={() => handleAction(() => onMove(deal.id, prevStage))}
                                     className="px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
                                 >
-                                    <ArrowLeft size={16} className="text-gray-400"/> 
+                                    <ArrowLeft size={16} className="text-gray-400" />
                                     Voltar para {prevStage.split(' ')[0]}...
                                 </button>
                             )}
-                            
+
                             {/* AVANÇAR ETAPA (Generico) */}
                             {nextStage && (
-                                <button 
+                                <button
                                     onClick={() => handleAction(() => onMove(deal.id, nextStage))}
                                     className="px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
                                 >
-                                    <ArrowRight size={16} className="text-gray-400"/> 
+                                    <ArrowRight size={16} className="text-gray-400" />
                                     Avançar para {nextStage.split(' ')[0]}...
                                 </button>
                             )}
 
                             {/* FORÇAR GANHO / PERDA / ESPERA */}
                             <div className="border-t border-gray-100 my-1"></div>
-                            
+
                             {/* Mover para Lista de Espera - Novo! */}
                             {stage !== DealStage.WON && stage !== DealStage.LOST && (
-                                <button 
+                                <button
                                     onClick={() => handleAction(() => onWait(deal.id))}
                                     className="px-4 py-2 text-left text-sm text-amber-600 hover:bg-amber-50 flex items-center gap-2"
                                 >
-                                    <PauseCircle size={16}/> Mover p/ Lista de Espera
+                                    <PauseCircle size={16} /> Mover p/ Lista de Espera
                                 </button>
                             )}
 
                             {stage !== DealStage.WON && (
-                                <button 
+                                <button
                                     onClick={() => handleAction(() => onMove(deal.id, DealStage.WON))}
                                     className="px-4 py-2 text-left text-sm text-green-700 hover:bg-green-50 flex items-center gap-2 font-semibold"
                                 >
-                                    <CheckCircle size={16}/> Confirmar Matrícula
+                                    <CheckCircle size={16} /> Confirmar Matrícula
                                 </button>
                             )}
-                            
+
                             {stage !== DealStage.LOST && (
-                                <button 
+                                <button
                                     onClick={() => handleAction(() => onMove(deal.id, DealStage.LOST))}
                                     className="px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
                                 >
-                                    <XCircle size={16}/> Marcar como Perdido
+                                    <XCircle size={16} /> Marcar como Perdido
                                 </button>
                             )}
 
                             <div className="border-t border-gray-100 my-1"></div>
-                            
-                            <button 
-                                onClick={() => handleAction(() => { if(confirm('Tem certeza?')) onDelete(deal.id) })}
+
+                            <button
+                                onClick={() => handleAction(() => { if (confirm('Tem certeza?')) onDelete(deal.id) })}
                                 className="px-4 py-2 text-left text-sm text-gray-400 hover:bg-gray-50 hover:text-red-600 flex items-center gap-2"
                             >
-                                <Trash2 size={16}/> Excluir
+                                <Trash2 size={16} /> Excluir
                             </button>
                         </div>
                     )}
                 </div>
             </div>
-            
+
             <div>
                 <h4 className="font-bold text-gray-900 text-sm leading-tight hover:text-indigo-600 cursor-pointer">{lead?.name || 'Lead Desconhecido'}</h4>
                 {lead && (
                     <div className="flex flex-col gap-2 mt-2">
                         <div className="flex items-start gap-1.5 text-xs text-indigo-700 font-medium bg-indigo-50 p-1.5 rounded">
-                            <GraduationCap size={14} className="mt-0.5 shrink-0"/>
+                            <GraduationCap size={14} className="mt-0.5 shrink-0" />
                             <span className="leading-tight line-clamp-2">{lead.desiredCourse || 'Curso não informado'}</span>
                         </div>
-                        
+
                         {lead.classification && (
                             <div className={`text-[10px] px-2 py-1 rounded w-fit ${classificationColor} font-medium leading-tight truncate max-w-full`} title={lead.classification}>
                                 {lead.classification}
@@ -678,41 +677,41 @@ const DealCard = ({ deal, lead, stage, onMove, onWait, onEdit, onDelete, nextSta
             )}
 
             <div className="flex items-center justify-between pt-3 border-t border-gray-100 mt-1">
-                <button 
+                <button
                     onClick={() => onEdit(deal)}
                     title="Editar Valor"
                     className="flex items-center text-gray-900 text-sm font-bold hover:text-indigo-600 transition p-1 -ml-1 rounded hover:bg-gray-50"
                 >
-                    <DollarSign size={14} className="text-gray-400 mr-0.5"/>
+                    <DollarSign size={14} className="text-gray-400 mr-0.5" />
                     {deal.value.toLocaleString('pt-BR')}
                 </button>
                 <div className="flex items-center text-xs text-gray-400" title="Previsão de Matrícula">
-                    <Calendar size={12} className="mr-1"/>
-                    {new Date(deal.expectedCloseDate).toLocaleDateString(undefined, {day:'2-digit', month:'2-digit'})}
+                    <Calendar size={12} className="mr-1" />
+                    {new Date(deal.expectedCloseDate).toLocaleDateString(undefined, { day: '2-digit', month: '2-digit' })}
                 </div>
             </div>
 
             {/* BOTÕES DE AÇÃO DIRETA NO CARD (SEM MENU) */}
             <div className="mt-3 flex gap-2">
-                 {/* Se estiver em DECISÃO, mostra botão de Matricular */}
-                 {stage === DealStage.DECISION && (
-                     <button 
+                {/* Se estiver em DECISÃO, mostra botão de Matricular */}
+                {stage === DealStage.DECISION && (
+                    <button
                         onClick={(e) => { e.stopPropagation(); onMove(deal.id, DealStage.WON); }}
                         className="flex-1 bg-green-600 text-white text-xs font-bold py-2 rounded hover:bg-green-700 transition flex items-center justify-center gap-1 shadow-sm"
-                     >
-                        <CheckCircle size={12}/> Matricular
-                     </button>
-                 )}
+                    >
+                        <CheckCircle size={12} /> Matricular
+                    </button>
+                )}
 
-                 {/* Botão padrão de avançar para outras fases */}
-                 {nextStage && stage !== DealStage.DECISION && (
-                    <button 
+                {/* Botão padrão de avançar para outras fases */}
+                {nextStage && stage !== DealStage.DECISION && (
+                    <button
                         onClick={(e) => { e.stopPropagation(); onMove(deal.id, nextStage); }}
                         className="w-full bg-gray-50 text-gray-600 border border-gray-200 text-xs font-semibold py-1.5 rounded hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center gap-1"
                     >
-                        Avançar <ArrowRight size={12}/>
+                        Avançar <ArrowRight size={12} />
                     </button>
-                 )}
+                )}
             </div>
         </div>
     );
