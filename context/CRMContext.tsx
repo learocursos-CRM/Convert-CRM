@@ -100,7 +100,7 @@ export const CRMProvider = ({ children }: { children?: ReactNode }) => {
 
   // --- DATA FETCHING ---
   const fetchInitialData = async () => {
-    if (isLoading) return; // Prevent double fetch
+    // REMOVED: if (isLoading) return; -> This was causing infinite load because isLoading starts as true!
     setIsLoading(true);
     try {
       // Fetch Session
