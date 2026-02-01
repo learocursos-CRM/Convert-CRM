@@ -347,6 +347,29 @@ const UserSettings = () => {
         alert('Senha resetada com sucesso! O usuário será forçado a trocá-la no próximo login.');
     };
 
+    // Delete user
+    const handleDeleteUser = async (user: User) => {
+        if (!window.confirm(`Tem certeza que deseja EXCLUIR permanentemente o usuário ${user.name}?\n\nEsta ação NÃO pode ser desfeita!`)) return;
+
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) return;
+
+        const response = await fetch(`/api/admin/users/${user.id}/delete`, {
+            method: 'DELETE',
+            headers: {
+                'Authorization': `Bearer ${session.access_token}`
+            }
+        });
+
+        if (response.ok) {
+            await fetchUsers();
+            alert('Usuário excluído com sucesso!');
+        } else {
+            const error = await response.json();
+            alert('Erro ao excluir usuário: ' + (error.error || 'Erro desconhecido'));
+        }
+    };
+
     // Toggle active status
     const handleToggleActive = async (user: User) => {
         if (!window.confirm(`Deseja ${user.active ? 'desativar' : 'ativar'} ${user.name}?`)) return;
@@ -476,6 +499,13 @@ const UserSettings = () => {
                                                 className="text-gray-400 hover:text-amber-600 transition p-2 hover:bg-amber-50 rounded"
                                             >
                                                 <KeyRound size={16} />
+                                            </button>
+                                            <button
+                                                onClick={() => handleDeleteUser(user)}
+                                                title="Excluir usuário"
+                                                className="text-gray-400 hover:text-red-600 transition p-2 hover:bg-red-50 rounded"
+                                            >
+                                                <Trash2 size={16} />
                                             </button>
                                         </div>
                                     </td>
