@@ -167,11 +167,11 @@ export const CRMProvider = ({ children }: { children?: ReactNode }) => {
       };
 
       const [leadsRes, dealsRes, waitingRes, activitiesRes, profilesRes] = await Promise.all([
-        fetchWithTimeout(supabase.from('leads').select('*').order('created_at', { ascending: false }).then(r => r), 'Leads'),
-        fetchWithTimeout(supabase.from('deals').select('*').then(r => r), 'Deals'),
-        fetchWithTimeout(supabase.from('waiting_list').select('*').then(r => r), 'WaitingList'),
-        fetchWithTimeout(supabase.from('activities').select('*').order('timestamp', { ascending: false }).limit(500).then(r => r), 'Activities'),
-        fetchWithTimeout(supabase.from('profiles').select('*').then(r => r), 'Profiles')
+        fetchWithTimeout(Promise.resolve(supabase.from('leads').select('*').order('created_at', { ascending: false })), 'Leads'),
+        fetchWithTimeout(Promise.resolve(supabase.from('deals').select('*')), 'Deals'),
+        fetchWithTimeout(Promise.resolve(supabase.from('waiting_list').select('*')), 'WaitingList'),
+        fetchWithTimeout(Promise.resolve(supabase.from('activities').select('*').order('timestamp', { ascending: false }).limit(500)), 'Activities'),
+        fetchWithTimeout(Promise.resolve(supabase.from('profiles').select('*')), 'Profiles')
       ]);
 
       if (leadsRes.data) setLeads(leadsRes.data.map(mapLeadFromDB));
