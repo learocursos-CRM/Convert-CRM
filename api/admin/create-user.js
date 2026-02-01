@@ -83,7 +83,9 @@ export default async function handler(req, res) {
                 email,
                 name,
                 role,
-                active: true
+                active: true,
+                must_change_password: true,
+                created_by: user.id
             });
 
         if (profileCreateError) {
@@ -94,6 +96,16 @@ export default async function handler(req, res) {
                 error: 'Failed to create user profile: ' + (profileCreateError.message || JSON.stringify(profileCreateError))
             });
         }
+
+        // Create audit log entry
+        await adminClient
+            .from('user_audit_log')
+            .insert({
+                user_id: newUser.user.id,
+                action: 'created',
+                performed_by: user.id,
+                details: { email, name, role }
+            });
 
         return res.status(200).json({
             success: true,
