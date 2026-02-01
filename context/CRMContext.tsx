@@ -60,8 +60,6 @@ interface CRMContextType {
   addUser: (user: Omit<User, 'id' | 'avatar'>) => void;
   updateUser: (id: string, data: Partial<User>) => void;
   deleteUser: (id: string) => void;
-  updateUser: (id: string, data: Partial<User>) => void;
-  deleteUser: (id: string) => void;
   switchUser: (userId: string) => void;
   deleteLead: (id: string) => Promise<void>; // Added deleteLead action
 
@@ -139,13 +137,12 @@ export const CRMProvider = ({ children }: { children?: ReactNode }) => {
       } as User)));
 
     } catch (error) {
-      if (error instanceof Error && error.name === 'AbortError') {
-        console.log('Fetch aborted');
-      } else {
-        console.error('Error fetching initial data:', error);
-      }
+      console.error('CRITICAL: Error fetching initial data:', error);
+      // Fallback: If critical data (profile) failed, force logout to prevent invalid state
+      // But if it's just a network flakiness, we shouldn't kill the session immediately unless it's persistent.
+      // For the "infinite loading" bug, the most important thing is to stop loading.
     } finally {
-      setIsLoading(false);
+      setIsLoading(false); // GUARANTEE: Never stay in infinite loading
     }
   };
 
@@ -523,91 +520,58 @@ export const CRMProvider = ({ children }: { children?: ReactNode }) => {
   };
 
   const deleteLead = async (id: string) => {
+    // 1. Validation
     if (!currentUser || currentUser.role !== 'admin') {
       alert("ACESSO NEGADO: Apenas administradores podem excluir leads.");
       return;
     }
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error("Sessão inválida");
+      // 2. Direct Supabase Deletion (Transaction-like logic)
 
-      // Call API endpoint
-      const response = await fetch(`/api/leads/${id}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${session.access_token}` }
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Falha ao excluir lead');
+      // Delete associated Deals first (Safety measure)
+      const { error: dealsError } = await supabase.from('deals').delete().eq('lead_id', id);
+      if (dealsError) {
+        console.warn("Aviso ao excluir deals associados:", dealsError.message);
       }
 
-      const result = await response.json();
+      // Delete the Lead
+      const { error: leadError } = await supabase.from('leads').delete().eq('id', id);
 
-      // Update Local State directly
+      if (leadError) {
+        throw new Error(leadError.message);
+      }
+
+      // DIAGNOSTIC CHECK: Did the deletion kill the session?
+      const { data: { session: checkSession } } = await supabase.auth.getSession();
+      if (!checkSession) {
+        alert("CRITICAL DIAGNOSTIC: A sessão foi encerrada IMEDIATAMENTE após a exclusão no banco. Isso confirma um TRIGGER de banco de dados deletando o usuário.");
+        return;
+      }
+
+      const { data: checkProfile } = await supabase.from('profiles').select('id').eq('id', currentUser.id).single();
+      if (!checkProfile) {
+        alert("CRITICAL DIAGNOSTIC: O perfil do usuário foi deletado após a exclusão do lead. Isso confirma um CASCADE incorreto.");
+        // Session might still exist briefly in memory, but user is gone.
+      }
+
+      // 3. Update Local State (Maintains Auth Stability)
       setLeads(prev => prev.filter(l => l.id !== id));
-      // Also remove associated deals from state
       setDeals(prev => prev.filter(d => d.leadId !== id));
 
+      // 4. Log Activity (Non-blocking)
       addActivity({
         type: 'status_change',
-        content: `Lead excluído permanentemente via Sistema.`,
+        content: `Lead excluído permanentemente via Sistema (Client-Side) - V3 Fix.`,
         leadId: id,
         performer: currentUser.name
-      });
+      }).catch(err => console.error("Falha ao registrar log de exclusão", err));
 
-      alert(`Lead excluído com sucesso!${result.deals_removed > 0 ? `\n${result.deals_removed} negócio(s) removido(s).` : ''}`);
-
-    } catch (e: any) {
-      console.error(e);
-      alert('Erro ao excluir lead: ' + e.message);
-    }
-  };
-
-
-
-  const deleteLead = async (id: string) => {
-    if (!currentUser || currentUser.role !== 'admin') {
-      alert("ACESSO NEGADO: Apenas administradores podem excluir leads.");
-      return;
-    }
-
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error("Sessão inválida");
-
-      // Call API endpoint
-      const response = await fetch(`/api/leads/${id}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${session.access_token}` }
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Falha ao excluir lead');
-      }
-
-      const result = await response.json();
-
-      // Update Local State directly
-      setLeads(prev => prev.filter(l => l.id !== id));
-      // Also remove associated deals from state if we want to be perfect, 
-      // although they might be cleaned up by next fetch or we can filter them now.
-      setDeals(prev => prev.filter(d => d.leadId !== id));
-
-      addActivity({
-        type: 'status_change',
-        content: `Lead excluído permanentemente via Sistema.`,
-        leadId: id, // checking if this breaks if lead doesn't exist? activity holds ID only usually.
-        performer: currentUser.name
-      });
-
-      alert(`Lead excluído com sucesso!${result.deals_removed > 0 ? `\n${result.deals_removed} negócio(s) removido(s).` : ''}`);
+      alert(`Lead excluído com sucesso! (Sessão OK: ${!!checkSession})`);
 
     } catch (e: any) {
       console.error(e);
-      alert('Erro ao excluir lead: ' + e.message);
+      alert('Erro ao excluir lead: ' + (e.message || e));
     }
   };
 
@@ -1014,7 +978,7 @@ export const CRMProvider = ({ children }: { children?: ReactNode }) => {
     <CRMContext.Provider value={{
       allLeads: leads, leads: visibleLeads, deals: visibleDeals, waitingList: visibleWaitingList, activities, users, currentUser, companySettings, availableSources, lossReasons, waitingReasons, globalSearch, setGlobalSearch, isLoading,
       login, logout, changeMyPassword, updateMyProfile, adminResetPassword,
-      addLead, bulkAddLeads, updateLeadData, assignLead, addDeal, updateDealStage, updateDeal, deleteDeal,
+      addLead, bulkAddLeads, updateLeadData, assignLead, addDeal, updateDealStage, updateDeal, deleteDeal, deleteLead, deleteLead,
       moveToWaitingList, restoreFromWaitingList, updateWaitingListItem, addActivity, getLeadActivities,
       updateCompanySettings, addSource, removeSource, addUser, updateUser, deleteUser, switchUser,
       getLeadSLA, getLeadPipelineStatus, runAutoArchiving, normalizeClassification
