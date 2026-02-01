@@ -75,10 +75,10 @@ export default async function handler(req, res) {
             return res.status(400).json({ error: createError.message });
         }
 
-        // Create profile in public.profiles
+        // Create profile in public.profiles (Use upsert to handle cases where trigger might have already created it)
         const { error: profileCreateError } = await adminClient
             .from('profiles')
-            .insert({
+            .upsert({
                 id: newUser.user.id,
                 email,
                 name,
