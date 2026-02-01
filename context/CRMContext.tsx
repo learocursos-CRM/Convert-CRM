@@ -750,10 +750,55 @@ export const CRMProvider = ({ children }: { children?: ReactNode }) => {
   const addSource = (source: string) => { checkAdmin('adicionar fontes'); if (!availableSources.includes(source)) setAvailableSources(prev => [...prev, source]); };
   const removeSource = (source: string) => { checkAdmin('remover fontes'); setAvailableSources(prev => prev.filter(s => s !== source)); };
 
-  const addUser = (userData: Omit<User, 'id' | 'avatar'>) => {
-    // Creating users in Supabase requires Admin API which is not available in 'anon' key on client side usually.
-    // So 'addUser' from UI is tricky without a Server Function.
-    alert("Para adicionar usuários, use o Painel do Supabase > Auth.");
+  const addUser = async (userData: Omit<User, 'id' | 'avatar'>) => {
+    checkAdmin('adicionar usuários');
+
+    try {
+      // Get current session token
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        alert('Sessão expirada. Faça login novamente.');
+        return;
+      }
+
+      // Call serverless function to create user
+      const response = await fetch('/api/admin/create-user', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({
+          email: userData.email,
+          password: userData.password,
+          name: userData.name,
+          role: userData.role
+        })
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Erro ao criar usuário');
+      }
+
+      // Add to local state (optimistic update)
+      const newUser: User = {
+        id: result.user.id,
+        name: result.user.name,
+        email: result.user.email,
+        role: result.user.role,
+        avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(result.user.name)}&background=random`,
+        active: true
+      };
+
+      setUsers(prev => [...prev, newUser]);
+      alert(`Usuário ${newUser.name} criado com sucesso!`);
+
+    } catch (error: any) {
+      console.error('Error creating user:', error);
+      alert(`Erro ao criar usuário: ${error.message}`);
+    }
   };
 
   const updateUser = (id: string, data: Partial<User>) => {
