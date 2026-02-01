@@ -149,13 +149,29 @@ export const CRMProvider = ({ children }: { children?: ReactNode }) => {
         }
       }
 
-      // Fetch Global Data (RLS will handle visibility)
+      // Fetch Global Data with individual timeouts and graceful failure
+      // This allows login to succeed even if some queries are slow
+      const queryTimeout = 8000; // 8 seconds per query
+
+      const fetchWithTimeout = async (promise: Promise<any>, name: string) => {
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error(`${name} query timeout`)), queryTimeout)
+        );
+
+        try {
+          return await Promise.race([promise, timeoutPromise]);
+        } catch (error) {
+          console.error(`${name} fetch failed or timed out:`, error);
+          return { data: null, error };
+        }
+      };
+
       const [leadsRes, dealsRes, waitingRes, activitiesRes, profilesRes] = await Promise.all([
-        supabase.from('leads').select('*').order('created_at', { ascending: false }),
-        supabase.from('deals').select('*'),
-        supabase.from('waiting_list').select('*'),
-        supabase.from('activities').select('*').order('timestamp', { ascending: false }),
-        supabase.from('profiles').select('*')
+        fetchWithTimeout(supabase.from('leads').select('*').order('created_at', { ascending: false }).then(r => r), 'Leads'),
+        fetchWithTimeout(supabase.from('deals').select('*').then(r => r), 'Deals'),
+        fetchWithTimeout(supabase.from('waiting_list').select('*').then(r => r), 'WaitingList'),
+        fetchWithTimeout(supabase.from('activities').select('*').order('timestamp', { ascending: false }).limit(500).then(r => r), 'Activities'),
+        fetchWithTimeout(supabase.from('profiles').select('*').then(r => r), 'Profiles')
       ]);
 
       if (leadsRes.data) setLeads(leadsRes.data.map(mapLeadFromDB));
