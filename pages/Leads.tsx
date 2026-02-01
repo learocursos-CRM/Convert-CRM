@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { useCRM } from '../context/CRMContext';
 import { LeadSource, Lead, DealStage } from '../types';
-import { Plus, Search, Filter, Phone, Mail, Clock, AlertTriangle, ChevronRight, X, UploadCloud, FileSpreadsheet, CheckCircle, ArrowRight, AlertCircle, Download, Lock, Edit3, MessageSquare, Briefcase, Archive, Layers, PauseCircle } from 'lucide-react';
+import { Plus, Search, Filter, Phone, Mail, Clock, AlertTriangle, ChevronRight, X, UploadCloud, FileSpreadsheet, CheckCircle, ArrowRight, AlertCircle, Download, Lock, Edit3, MessageSquare, Briefcase, Archive, Layers, PauseCircle, Trash2, Eye } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { useNavigate } from 'react-router-dom';
 
@@ -86,6 +86,32 @@ const Leads = () => {
         if (!selectedLead || !newNote.trim()) return;
         addActivity({ type: 'note', content: newNote, leadId: selectedLead.id, performer: currentUser.name });
         setNewNote('');
+    };
+
+    const handleDeleteLead = async (leadId: string, leadName: string, e: React.MouseEvent) => {
+        e.stopPropagation();
+
+        if (!window.confirm(`Excluir permanentemente o lead "${leadName}"?\n\nTodos os negócios associados serão removidos. Esta ação NÃO pode ser desfeita!`)) {
+            return;
+        }
+
+        const { supabase } = await import('../services/supabase');
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) return;
+
+        const response = await fetch(`/api/leads/${leadId}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${session.access_token}` }
+        });
+
+        if (response.ok) {
+            const result = await response.json();
+            alert(`Lead excluído com sucesso!${result.deals_removed > 0 ? `\n${result.deals_removed} negócio(s) removido(s).` : ''}`);
+            window.location.reload();
+        } else {
+            const error = await response.json();
+            alert(`Erro: ${error.error || 'Falha ao excluir lead'}`);
+        }
     };
 
     const startEditing = () => {
@@ -255,7 +281,33 @@ const Leads = () => {
                                                     lead.ownerId ? <div className="flex items-center gap-2"><img src={users.find(u => u.id === lead.ownerId)?.avatar} className="w-6 h-6 rounded-full" alt="Owner" /><span className="text-sm text-gray-700">{users.find(u => u.id === lead.ownerId)?.name.split(' ')[0]}</span></div> : <span className="text-xs text-gray-400">Não atribuído</span>
                                                 )}
                                             </td>
-                                            <td className="p-4 text-right"><button className="text-gray-400 hover:text-indigo-600"><ChevronRight size={20} /></button></td>
+                                            <td className="p-4 text-right" onClick={e => e.stopPropagation()}>
+                                                <div className="flex items-center justify-end gap-2">
+                                                    <button
+                                                        onClick={() => setSelectedLead(lead)}
+                                                        title="Visualizar"
+                                                        className="text-gray-400 hover:text-indigo-600 transition p-2"
+                                                    >
+                                                        <Eye size={16} />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => { setSelectedLead(lead); startEditing(); }}
+                                                        title="Editar"
+                                                        className="text-gray-400 hover:text-blue-600 transition p-2"
+                                                    >
+                                                        <Edit3 size={16} />
+                                                    </button>
+                                                    {isAdmin && (
+                                                        <button
+                                                            onClick={(e) => handleDeleteLead(lead.id, lead.name, e)}
+                                                            title="Excluir lead"
+                                                            className="text-gray-400 hover:text-red-600 transition p-2"
+                                                        >
+                                                            <Trash2 size={16} />
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </td>
                                         </tr>
                                     )
                                 })
