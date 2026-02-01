@@ -235,25 +235,56 @@ export const CRMProvider = ({ children }: { children?: ReactNode }) => {
 
   };
 
-  const changeMyPassword = (newPassword: string, oldPassword: string): boolean => {
+  const changeMyPassword = async (newPwd: string, oldPwd: string): Promise<boolean> => {
     if (!currentUser) return false;
 
-    if (currentUser.password !== oldPassword) {
-      return false; // Password mismatch
+    try {
+      // 1. Re-verify current password by attempting login
+      const { error: verifyError } = await supabase.auth.signInWithPassword({
+        email: currentUser.email,
+        password: oldPwd
+      });
+
+      if (verifyError) {
+        console.error("Password verification failed:", verifyError);
+        return false;
+      }
+
+      // 2. Update password using Supabase
+      const { error: updateError } = await supabase.auth.updateUser({
+        password: newPwd
+      });
+
+      if (updateError) {
+        console.error("Password update failed:", updateError);
+        alert("Erro ao atualizar senha: " + updateError.message);
+        return false;
+      }
+
+      // 3. Update must_change_password flag in profiles
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .update({ must_change_password: false })
+        .eq('id', currentUser.id);
+
+      if (profileError) {
+        console.error("Failed to update must_change_password flag:", profileError);
+        // Don't fail, password was changed successfully
+      }
+
+      // 4. Update local state
+      setCurrentUser({
+        ...currentUser,
+        mustChangePassword: false
+      });
+
+      alert("Senha alterada com sucesso!");
+      return true;
+    } catch (e: any) {
+      console.error("Unexpected error during password change:", e);
+      alert("Erro inesperado: " + (e.message || e));
+      return false;
     }
-
-    const updatedUser = { ...currentUser, password: newPassword, mustChangePassword: false };
-
-    // Update in users list
-    setUsers(prev => prev.map(u =>
-      u.id === currentUser.id
-        ? updatedUser
-        : u
-    ));
-
-    // Update session
-    setCurrentUser(updatedUser);
-    return true;
   };
 
   const updateMyProfile = (data: Partial<User>) => {
