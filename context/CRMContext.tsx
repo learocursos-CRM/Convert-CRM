@@ -37,7 +37,7 @@ interface CRMContextType {
   login: (email: string, password: string) => Promise<boolean>;
   logout: () => Promise<void>;
   changeMyPassword: (newPassword: string, oldPassword: string) => Promise<boolean>;
-  updateMyProfile: (data: Partial<User>) => void;
+  updateMyProfile: (data: Partial<User>) => Promise<void>;
   adminResetPassword: (userId: string, newPassword: string) => void;
 
   // Actions
@@ -326,20 +326,49 @@ export const CRMProvider = ({ children }: { children?: ReactNode }) => {
     }
   };
 
-  const updateMyProfile = (data: Partial<User>) => {
+  const updateMyProfile = async (data: Partial<User>) => {
     if (!currentUser) return;
 
-    const updatedUser = { ...currentUser, ...data };
+    try {
+      // 1. Update in Supabase database
+      const updateData: any = {};
 
-    // Update in users list
-    setUsers(prev => prev.map(u =>
-      u.id === currentUser.id
-        ? updatedUser
-        : u
-    ));
+      // Map camelCase to snake_case for database
+      if (data.avatar !== undefined) updateData.avatar = data.avatar;
+      if (data.name !== undefined) updateData.name = data.name;
+      if (data.email !== undefined) updateData.email = data.email;
+      if (data.role !== undefined) updateData.role = data.role;
+      if (data.active !== undefined) updateData.active = data.active;
+      if (data.mustChangePassword !== undefined) updateData.must_change_password = data.mustChangePassword;
 
-    // Update session
-    setCurrentUser(updatedUser);
+      const { error } = await supabase
+        .from('profiles')
+        .update(updateData)
+        .eq('id', currentUser.id);
+
+      if (error) {
+        console.error('Error updating profile:', error);
+        alert('Erro ao atualizar perfil: ' + error.message);
+        return;
+      }
+
+      // 2. Update local state only after successful database update
+      const updatedUser = { ...currentUser, ...data };
+
+      setUsers(prev => prev.map(u =>
+        u.id === currentUser.id ? updatedUser : u
+      ));
+
+      setCurrentUser(updatedUser);
+
+      // Success feedback for avatar upload
+      if (data.avatar) {
+        console.log('Avatar updated successfully');
+      }
+    } catch (error: any) {
+      console.error('Error in updateMyProfile:', error);
+      alert('Erro ao atualizar perfil: ' + error.message);
+    }
   };
 
   const adminResetPassword = (userId: string, newPassword: string) => {
