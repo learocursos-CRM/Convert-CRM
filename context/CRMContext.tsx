@@ -60,7 +60,10 @@ interface CRMContextType {
   addUser: (user: Omit<User, 'id' | 'avatar'>) => void;
   updateUser: (id: string, data: Partial<User>) => void;
   deleteUser: (id: string) => void;
+  updateUser: (id: string, data: Partial<User>) => void;
+  deleteUser: (id: string) => void;
   switchUser: (userId: string) => void;
+  deleteLead: (id: string) => Promise<void>; // Added deleteLead action
 
   // Helpers
   getLeadSLA: (lead: Lead) => SLAData;
@@ -516,6 +519,133 @@ export const CRMProvider = ({ children }: { children?: ReactNode }) => {
     // Let's use loop.
     for (const l of leadsData) {
       await addLead(l);
+    }
+  };
+
+  const deleteLead = async (id: string) => {
+    if (!currentUser || currentUser.role !== 'admin') {
+      alert("ACESSO NEGADO: Apenas administradores podem excluir leads.");
+      return;
+    }
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("Sessão inválida");
+
+      // Call API endpoint
+      const response = await fetch(`/api/leads/${id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${session.access_token}` }
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Falha ao excluir lead');
+      }
+
+      const result = await response.json();
+
+      // Update Local State directly
+      setLeads(prev => prev.filter(l => l.id !== id));
+      // Also remove associated deals from state
+      setDeals(prev => prev.filter(d => d.leadId !== id));
+
+      addActivity({
+        type: 'status_change',
+        content: `Lead excluído permanentemente via Sistema.`,
+        leadId: id,
+        performer: currentUser.name
+      });
+
+      alert(`Lead excluído com sucesso!${result.deals_removed > 0 ? `\n${result.deals_removed} negócio(s) removido(s).` : ''}`);
+
+    } catch (e: any) {
+      console.error(e);
+      alert('Erro ao excluir lead: ' + e.message);
+    }
+  };
+
+  const deleteLead = async (id: string) => {
+    if (!currentUser || currentUser.role !== 'admin') {
+      alert("ACESSO NEGADO: Apenas administradores podem excluir leads.");
+      return;
+    }
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("Sessão inválida");
+
+      const response = await fetch(`/api/leads/${id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${session.access_token}` }
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Falha ao excluir lead');
+      }
+
+      const result = await response.json();
+
+      setLeads(prev => prev.filter(l => l.id !== id));
+      setDeals(prev => prev.filter(d => d.leadId !== id));
+
+      addActivity({
+        type: 'status_change',
+        content: `Lead excluído permanentemente via Sistema.`,
+        leadId: id,
+        performer: currentUser.name
+      });
+
+      alert(`Lead excluído com sucesso!${result.deals_removed > 0 ? `\n${result.deals_removed} negócio(s) removido(s).` : ''}`);
+
+    } catch (e: any) {
+      console.error(e);
+      alert('Erro ao excluir lead: ' + e.message);
+    }
+  };
+
+  const deleteLead = async (id: string) => {
+    if (!currentUser || currentUser.role !== 'admin') {
+      alert("ACESSO NEGADO: Apenas administradores podem excluir leads.");
+      return;
+    }
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("Sessão inválida");
+
+      // Call API endpoint
+      const response = await fetch(`/api/leads/${id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${session.access_token}` }
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Falha ao excluir lead');
+      }
+
+      const result = await response.json();
+
+      // Update Local State directly
+      setLeads(prev => prev.filter(l => l.id !== id));
+      // Also remove associated deals from state if we want to be perfect, 
+      // although they might be cleaned up by next fetch or we can filter them now.
+      setDeals(prev => prev.filter(d => d.leadId !== id));
+
+      addActivity({
+        type: 'status_change',
+        content: `Lead excluído permanentemente via Sistema.`,
+        leadId: id, // checking if this breaks if lead doesn't exist? activity holds ID only usually.
+        performer: currentUser.name
+      });
+
+      alert(`Lead excluído com sucesso!${result.deals_removed > 0 ? `\n${result.deals_removed} negócio(s) removido(s).` : ''}`);
+
+    } catch (e: any) {
+      console.error(e);
+      alert('Erro ao excluir lead: ' + e.message);
     }
   };
 
