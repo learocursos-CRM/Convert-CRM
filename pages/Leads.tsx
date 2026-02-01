@@ -108,33 +108,7 @@ const Leads = () => {
             return;
         }
 
-        const { supabase } = await import('../services/supabase');
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) return;
-
-        const response = await fetch(`/api/leads/${leadId}`, {
-            method: 'DELETE',
-            headers: { 'Authorization': `Bearer ${session.access_token}` }
-        });
-
-        if (response.ok) {
-            const result = await response.json();
-            alert(`Lead excluído com sucesso!${result.deals_removed > 0 ? `\n${result.deals_removed} negócio(s) removido(s).` : ''}`);
-
-            // UPDATE LOCAL STATE INSTEAD OF RELOAD
-            // This prevents the "App Restart" and login freeze issues
-            const { setLeads } = useCRM(); // We need to expose setLeads or use a helper
-            // Actually setLeads is not exposed directly in the destructured context above.
-            // Let's check if we can add a deleteLead action to context or just reload data.
-            // Better: Add removeLead action to context or force fetch.
-            // For now, let's just force a re-fetch if possible or just reload window is bad.
-            // Wait, we can't accept setLeads here if it's not exposed.
-            // Let's check CRMContext to see if we can expose a remove helper.
-            window.location.reload(); // Temporary keep until we fix context? NO. User said it crashes.
-        } else {
-            const error = await response.json();
-            alert(`Erro: ${error.error || 'Falha ao excluir lead'}`);
-        }
+        await deleteLead(leadId);
     };
 
     const startEditing = () => {
