@@ -100,6 +100,7 @@ export const CRMProvider = ({ children }: { children?: ReactNode }) => {
 
   // --- DATA FETCHING ---
   const fetchInitialData = async () => {
+    if (isLoading) return; // Prevent double fetch
     setIsLoading(true);
     try {
       // Fetch Session
@@ -108,7 +109,13 @@ export const CRMProvider = ({ children }: { children?: ReactNode }) => {
       if (session?.user) {
         // Fetch User Profile
         const { data: profile } = await supabase.from('profiles').select('*').eq('id', session.user.id).single();
-        if (profile) setCurrentUser(profile as User);
+        if (profile) {
+          // Map snake_case to camelCase
+          setCurrentUser({
+            ...profile,
+            mustChangePassword: profile.must_change_password
+          } as User);
+        }
       }
 
       // Fetch Global Data (RLS will handle visibility)
@@ -116,61 +123,108 @@ export const CRMProvider = ({ children }: { children?: ReactNode }) => {
       const { data: dealsData } = await supabase.from('deals').select('*');
       const { data: waitingData } = await supabase.from('waiting_list').select('*');
       const { data: activitiesData } = await supabase.from('activities').select('*').order('timestamp', { ascending: false });
-      const { data: profilesData } = await supabase.from('profiles').select('*'); // Only public profiles
+      const { data: profilesData } = await supabase.from('profiles').select('*');
 
       if (leadsData) setLeads(leadsData.map(mapLeadFromDB));
       if (dealsData) setDeals(dealsData.map(mapDealFromDB));
       if (waitingData) setWaitingList(waitingData.map(mapWaitingListFromDB));
-      if (activitiesData) setActivities(activitiesData as unknown as Activity[]); // Activities might need key mapping too?
-      if (profilesData) setUsers(profilesData as unknown as User[]);
+      // Map activities and profiles if needed
+      if (activitiesData) setActivities(activitiesData as unknown as Activity[]);
+      if (profilesData) setUsers(profilesData.map(p => ({
+        ...p,
+        mustChangePassword: p.must_change_password
+      } as User)));
 
     } catch (error) {
-      console.error('Error fetching initial data:', error);
+      if (error instanceof Error && error.name === 'AbortError') {
+        console.log('Fetch aborted');
+      } else {
+        console.error('Error fetching initial data:', error);
+      }
     } finally {
       setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchInitialData();
+    let mounted = true;
+
+    const init = async () => {
+      await fetchInitialData();
+    };
+    init();
 
     // Listen for Auth Changes
     const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (!mounted) return;
+
       if (event === 'SIGNED_IN' && session?.user) {
         const { data: profile } = await supabase.from('profiles').select('*').eq('id', session.user.id).single();
-        if (profile) setCurrentUser(profile as User);
-        fetchInitialData(); // Re-fetch data on login
+        if (profile && mounted) {
+          setCurrentUser({
+            ...profile,
+            mustChangePassword: profile.must_change_password
+          } as User);
+        }
+        if (mounted) fetchInitialData();
       } else if (event === 'SIGNED_OUT') {
-        setCurrentUser(null);
-        setLeads([]);
-        setDeals([]);
-        setWaitingList([]);
-        setActivities([]);
+        if (mounted) {
+          setCurrentUser(null);
+          setLeads([]);
+          setDeals([]);
+          setWaitingList([]);
+          setActivities([]);
+        }
       }
     });
 
     return () => {
+      mounted = false;
       authListener.subscription.unsubscribe();
     };
   }, []);
 
 
   // --- AUTHENTICATION ---
-  // --- AUTHENTICATION ---
   const login = async (email: string, password: string): Promise<boolean> => {
     try {
-      const { error } = await supabase.auth.signInWithPassword({
+      // 1. Authenticate with Supabase
+      const { error, data } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
       if (error) {
+        console.error("Login Error:", error);
         alert('Erro ao fazer login: ' + error.message);
         return false;
       }
+
+      // 2. Explicitly fetch profile immediately to reject login if profile missing
+      if (data.session?.user) {
+        const { data: profile, error: profileError } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', data.session.user.id)
+          .single();
+
+        if (profileError || !profile) {
+          console.error("Profile missing or fetch error:", profileError);
+          alert("Login bem-sucedido, mas erro ao carregar perfil. Contate o suporte.");
+          await supabase.auth.signOut(); // Force logout
+          return false;
+        }
+
+        setCurrentUser({
+          ...profile,
+          mustChangePassword: profile.must_change_password
+        } as User);
+      }
+
       return true;
-    } catch (e) {
-      console.error(e);
+    } catch (e: any) {
+      console.error("Unexpected Login Error:", e);
+      alert('Erro inesperado: ' + (e.message || e));
       return false;
     }
   };
@@ -178,6 +232,7 @@ export const CRMProvider = ({ children }: { children?: ReactNode }) => {
   const logout = async () => {
     await supabase.auth.signOut();
     setCurrentUser(null);
+
   };
 
   const changeMyPassword = (newPassword: string, oldPassword: string): boolean => {
