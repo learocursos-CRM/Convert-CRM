@@ -8,7 +8,7 @@ import { useNavigate } from 'react-router-dom';
 const Leads = () => {
     const navigate = useNavigate();
     // Destructure context
-    const { leads, addLead, bulkAddLeads, updateLeadData, assignLead, users, addDeal, availableSources, currentUser, globalSearch, setGlobalSearch, getLeadSLA, getLeadPipelineStatus, addActivity, getLeadActivities, normalizeClassification, isLoading } = useCRM();
+    const { leads, addLead, bulkAddLeads, updateLeadData, assignLead, users, addDeal, availableSources, currentUser, globalSearch, setGlobalSearch, getLeadSLA, getLeadPipelineStatus, addActivity, getLeadActivities, normalizeClassification, isLoading, deleteLead } = useCRM();
 
     // Show loading state while data is being fetched
     if (isLoading) {
