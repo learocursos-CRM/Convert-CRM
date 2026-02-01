@@ -46,6 +46,12 @@ export default async function handler(req, res) {
 
         // Create admin client with service role key
         const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+        if (!supabaseServiceRoleKey) {
+            console.error('Missing SUPABASE_SERVICE_ROLE_KEY');
+            return res.status(500).json({ error: 'Server configuration error: Missing Admin Key' });
+        }
+
         const adminClient = createClient(supabaseUrl, supabaseServiceRoleKey, {
             auth: {
                 autoRefreshToken: false,
@@ -82,9 +88,11 @@ export default async function handler(req, res) {
 
         if (profileCreateError) {
             console.error('Error creating profile:', profileCreateError);
-            // Try to delete the auth user if profile creation failed
+            // Try to delete the auth user if profile creation failed to avoid ghost users
             await adminClient.auth.admin.deleteUser(newUser.user.id);
-            return res.status(500).json({ error: 'Failed to create user profile' });
+            return res.status(500).json({
+                error: 'Failed to create user profile: ' + (profileCreateError.message || JSON.stringify(profileCreateError))
+            });
         }
 
         return res.status(200).json({
