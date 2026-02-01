@@ -99,19 +99,49 @@ export const CRMProvider = ({ children }: { children?: ReactNode }) => {
     'Turma Fechada / Lotada', 'Curso Indisponível no Momento', 'Aguardando Abertura de Edital', 'Aguardando Formação de Turma', 'Aluno Solicitou Pausa'
   ];
 
-  // --- DATA FETCHING ---
   const fetchInitialData = async () => {
-    // REMOVED: if (isLoading) return; -> This was causing infinite load because isLoading starts as true!
     setIsLoading(true);
+
+    // Timeout protection: Force exit loading after 15 seconds
+    const timeoutId = setTimeout(() => {
+      console.error('CRITICAL: fetchInitialData timeout after 15s - forcing exit from loading state');
+      setIsLoading(false);
+      alert('Erro ao carregar dados. Por favor, faça logout e tente novamente.');
+    }, 15000);
+
     try {
       // Fetch Session
-      const { data: { session } } = await supabase.auth.getSession();
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+      if (sessionError) {
+        console.error('Session error:', sessionError);
+        clearTimeout(timeoutId);
+        setIsLoading(false);
+        return;
+      }
 
       if (session?.user) {
-        // Fetch User Profile
-        const { data: profile } = await supabase.from('profiles').select('*').eq('id', session.user.id).single();
+        // Fetch User Profile with timeout
+        const { data: profile, error: profileError } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', session.user.id)
+          .single();
+
+        if (profileError) {
+          console.error('Profile fetch error:', profileError);
+          // If profile doesn't exist, force logout to prevent zombie session
+          if (profileError.code === 'PGRST116') { // No rows returned
+            console.error('CRITICAL: Profile missing for authenticated user - forcing logout');
+            await supabase.auth.signOut();
+            clearTimeout(timeoutId);
+            setIsLoading(false);
+            alert('Perfil de usuário não encontrado. Por favor, contate o administrador.');
+            return;
+          }
+        }
+
         if (profile) {
-          // Map snake_case to camelCase
           setCurrentUser({
             ...profile,
             mustChangePassword: profile.must_change_password
@@ -120,27 +150,27 @@ export const CRMProvider = ({ children }: { children?: ReactNode }) => {
       }
 
       // Fetch Global Data (RLS will handle visibility)
-      const { data: leadsData } = await supabase.from('leads').select('*').order('created_at', { ascending: false });
-      const { data: dealsData } = await supabase.from('deals').select('*');
-      const { data: waitingData } = await supabase.from('waiting_list').select('*');
-      const { data: activitiesData } = await supabase.from('activities').select('*').order('timestamp', { ascending: false });
-      const { data: profilesData } = await supabase.from('profiles').select('*');
+      const [leadsRes, dealsRes, waitingRes, activitiesRes, profilesRes] = await Promise.all([
+        supabase.from('leads').select('*').order('created_at', { ascending: false }),
+        supabase.from('deals').select('*'),
+        supabase.from('waiting_list').select('*'),
+        supabase.from('activities').select('*').order('timestamp', { ascending: false }),
+        supabase.from('profiles').select('*')
+      ]);
 
-      if (leadsData) setLeads(leadsData.map(mapLeadFromDB));
-      if (dealsData) setDeals(dealsData.map(mapDealFromDB));
-      if (waitingData) setWaitingList(waitingData.map(mapWaitingListFromDB));
-      // Map activities and profiles if needed
-      if (activitiesData) setActivities(activitiesData as unknown as Activity[]);
-      if (profilesData) setUsers(profilesData.map(p => ({
+      if (leadsRes.data) setLeads(leadsRes.data.map(mapLeadFromDB));
+      if (dealsRes.data) setDeals(dealsRes.data.map(mapDealFromDB));
+      if (waitingRes.data) setWaitingList(waitingRes.data.map(mapWaitingListFromDB));
+      if (activitiesRes.data) setActivities(activitiesRes.data as unknown as Activity[]);
+      if (profilesRes.data) setUsers(profilesRes.data.map(p => ({
         ...p,
         mustChangePassword: p.must_change_password
       } as User)));
 
+      clearTimeout(timeoutId);
     } catch (error) {
       console.error('CRITICAL: Error fetching initial data:', error);
-      // Fallback: If critical data (profile) failed, force logout to prevent invalid state
-      // But if it's just a network flakiness, we shouldn't kill the session immediately unless it's persistent.
-      // For the "infinite loading" bug, the most important thing is to stop loading.
+      clearTimeout(timeoutId);
     } finally {
       setIsLoading(false); // GUARANTEE: Never stay in infinite loading
     }
@@ -230,8 +260,27 @@ export const CRMProvider = ({ children }: { children?: ReactNode }) => {
   };
 
   const logout = async () => {
-    await supabase.auth.signOut();
-    setCurrentUser(null);
+    try {
+      // 1. Sign out from Supabase (clears session)
+      await supabase.auth.signOut();
+
+      // 2. Reset ALL local state to prevent contamination
+      setCurrentUser(null);
+      setLeads([]);
+      setDeals([]);
+      setWaitingList([]);
+      setActivities([]);
+      setUsers([]);
+      setGlobalSearch('');
+
+      // 3. Force reload to clear any cached state in memory
+      // This prevents the "infinite loading" bug on re-login
+      window.location.href = '/#/login';
+    } catch (error) {
+      console.error('Logout error:', error);
+      // Even if logout fails, force redirect to login
+      window.location.href = '/#/login';
+    }
   };
 
   const changeMyPassword = async (newPwd: string, oldPwd: string): Promise<boolean> => {
