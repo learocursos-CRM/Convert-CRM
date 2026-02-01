@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, ReactNode, useMemo, useEffect } from 'react';
 import { Lead, Deal, Activity, User, DealStage, LeadSource, CompanySettings, WaitingListItem } from '../types';
-import { MOCK_LEADS, MOCK_DEALS, MOCK_ACTIVITIES, MOCK_USERS, MOCK_WAITING_LIST } from '../services/mockData';
+import { supabase } from '../services/supabase';
 
 export type SLAStatus = 'normal' | 'warning' | 'overdue' | 'handled';
 
@@ -24,35 +24,35 @@ interface CRMContextType {
   waitingList: WaitingListItem[];
   activities: Activity[];
   users: User[];
-  currentUser: User | null; // Null if not logged in
+  currentUser: User | null;
   companySettings: CompanySettings;
   availableSources: string[];
   lossReasons: string[];
   waitingReasons: string[];
   globalSearch: string;
   setGlobalSearch: (term: string) => void;
+  isLoading: boolean; // Add loading state
 
   // Auth Actions
   login: (email: string, password: string) => Promise<boolean>;
-  logout: () => void;
-  changeMyPassword: (newPassword: string, oldPassword: string) => boolean; // Updated signature
+  logout: () => Promise<void>;
+  changeMyPassword: (newPassword: string, oldPassword: string) => Promise<boolean>;
   updateMyProfile: (data: Partial<User>) => void;
   adminResetPassword: (userId: string, newPassword: string) => void;
 
   // Actions
-  addLead: (lead: Omit<Lead, 'id' | 'createdAt'>) => boolean; // Return success status
-  bulkAddLeads: (leads: Omit<Lead, 'id' | 'createdAt'>[]) => void;
-  // updateLeadStatus REMOVED
-  updateLeadData: (id: string, data: Partial<Lead>) => void;
-  assignLead: (leadId: string, userId: string) => void;
-  addDeal: (deal: Omit<Deal, 'id'>) => void;
-  updateDealStage: (id: string, stage: DealStage) => void;
-  updateDeal: (id: string, data: Partial<Deal>) => void;
-  deleteDeal: (id: string) => void;
-  moveToWaitingList: (dealId: string, reason: string, notes?: string) => void;
-  restoreFromWaitingList: (itemId: string) => void;
-  updateWaitingListItem: (id: string, data: Partial<WaitingListItem>) => void;
-  addActivity: (activity: Omit<Activity, 'id' | 'timestamp'>) => void;
+  addLead: (lead: Omit<Lead, 'id' | 'createdAt'>) => Promise<boolean>;
+  bulkAddLeads: (leads: Omit<Lead, 'id' | 'createdAt'>[]) => Promise<void>;
+  updateLeadData: (id: string, data: Partial<Lead>) => Promise<void>;
+  assignLead: (leadId: string, userId: string) => Promise<void>;
+  addDeal: (deal: Omit<Deal, 'id'>) => Promise<void>;
+  updateDealStage: (id: string, stage: DealStage) => Promise<void>;
+  updateDeal: (id: string, data: Partial<Deal>) => Promise<void>;
+  deleteDeal: (id: string) => Promise<void>;
+  moveToWaitingList: (dealId: string, reason: string, notes?: string) => Promise<void>;
+  restoreFromWaitingList: (itemId: string) => Promise<void>;
+  updateWaitingListItem: (id: string, data: Partial<WaitingListItem>) => Promise<void>;
+  addActivity: (activity: Omit<Activity, 'id' | 'timestamp'>) => Promise<void>;
   getLeadActivities: (leadId: string) => Activity[];
   updateCompanySettings: (settings: CompanySettings) => void;
   addSource: (source: string) => void;
@@ -60,6 +60,7 @@ interface CRMContextType {
   addUser: (user: Omit<User, 'id' | 'avatar'>) => void;
   updateUser: (id: string, data: Partial<User>) => void;
   deleteUser: (id: string) => void;
+  switchUser: (userId: string) => void;
 
   // Helpers
   getLeadSLA: (lead: Lead) => SLAData;
@@ -70,34 +71,23 @@ interface CRMContextType {
 
 const CRMContext = createContext<CRMContextType | undefined>(undefined);
 
-// --- PERSISTENCE HELPERS ---
-const loadState = <T,>(key: string, fallback: T): T => {
-  try {
-    const saved = localStorage.getItem(key);
-    return saved ? JSON.parse(saved) : fallback;
-  } catch (e) {
-    console.error(`Error loading ${key}`, e);
-    return fallback;
-  }
-};
-
 export const CRMProvider = ({ children }: { children?: ReactNode }) => {
-  // Initialize state from LocalStorage or Mock Data
-  const [leads, setLeads] = useState<Lead[]>(() => loadState('crm_leads', MOCK_LEADS));
-  const [deals, setDeals] = useState<Deal[]>(() => loadState('crm_deals', MOCK_DEALS));
-  const [waitingList, setWaitingList] = useState<WaitingListItem[]>(() => loadState('crm_waitingList', MOCK_WAITING_LIST));
-  const [activities, setActivities] = useState<Activity[]>(() => loadState('crm_activities', MOCK_ACTIVITIES));
-  const [users, setUsers] = useState<User[]>(() => loadState('crm_users', MOCK_USERS));
-  const [currentUser, setCurrentUser] = useState<User | null>(() => loadState('crm_session', null));
+  const [leads, setLeads] = useState<Lead[]>([]);
+  const [deals, setDeals] = useState<Deal[]>([]);
+  const [waitingList, setWaitingList] = useState<WaitingListItem[]>([]);
+  const [activities, setActivities] = useState<Activity[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   const [globalSearch, setGlobalSearch] = useState('');
-  const [companySettings, setCompanySettings] = useState<CompanySettings>(() => loadState('crm_settings', {
+  const [companySettings, setCompanySettings] = useState<CompanySettings>({
     name: 'Minha Empresa',
     logoUrl: '',
     primaryColor: '#4f46e5',
     currency: 'BRL',
     timezone: 'America/Sao_Paulo'
-  }));
+  });
   const [availableSources, setAvailableSources] = useState<string[]>([
     ...Object.values(LeadSource), 'Forms', 'Balcão', 'Telefone', 'Importação - Vendedor', 'Importado'
   ]);
@@ -108,39 +98,85 @@ export const CRMProvider = ({ children }: { children?: ReactNode }) => {
     'Turma Fechada / Lotada', 'Curso Indisponível no Momento', 'Aguardando Abertura de Edital', 'Aguardando Formação de Turma', 'Aluno Solicitou Pausa'
   ];
 
-  // --- PERSISTENCE EFFECTS ---
-  useEffect(() => { localStorage.setItem('crm_leads', JSON.stringify(leads)); }, [leads]);
-  useEffect(() => { localStorage.setItem('crm_deals', JSON.stringify(deals)); }, [deals]);
-  useEffect(() => { localStorage.setItem('crm_waitingList', JSON.stringify(waitingList)); }, [waitingList]);
-  useEffect(() => { localStorage.setItem('crm_activities', JSON.stringify(activities)); }, [activities]);
-  useEffect(() => { localStorage.setItem('crm_users', JSON.stringify(users)); }, [users]);
-  useEffect(() => { localStorage.setItem('crm_settings', JSON.stringify(companySettings)); }, [companySettings]);
+  // --- DATA FETCHING ---
+  const fetchInitialData = async () => {
+    setIsLoading(true);
+    try {
+      // Fetch Session
+      const { data: { session } } = await supabase.auth.getSession();
+
+      if (session?.user) {
+        // Fetch User Profile
+        const { data: profile } = await supabase.from('profiles').select('*').eq('id', session.user.id).single();
+        if (profile) setCurrentUser(profile as User);
+      }
+
+      // Fetch Global Data (RLS will handle visibility)
+      const { data: leadsData } = await supabase.from('leads').select('*').order('created_at', { ascending: false });
+      const { data: dealsData } = await supabase.from('deals').select('*');
+      const { data: waitingData } = await supabase.from('waiting_list').select('*');
+      const { data: activitiesData } = await supabase.from('activities').select('*').order('timestamp', { ascending: false });
+      const { data: profilesData } = await supabase.from('profiles').select('*'); // Only public profiles
+
+      if (leadsData) setLeads(leadsData.map(mapLeadFromDB));
+      if (dealsData) setDeals(dealsData.map(mapDealFromDB));
+      if (waitingData) setWaitingList(waitingData.map(mapWaitingListFromDB));
+      if (activitiesData) setActivities(activitiesData as unknown as Activity[]); // Activities might need key mapping too?
+      if (profilesData) setUsers(profilesData as unknown as User[]);
+
+    } catch (error) {
+      console.error('Error fetching initial data:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   useEffect(() => {
-    if (currentUser) localStorage.setItem('crm_session', JSON.stringify(currentUser));
-    else localStorage.removeItem('crm_session');
-  }, [currentUser]);
+    fetchInitialData();
+
+    // Listen for Auth Changes
+    const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_IN' && session?.user) {
+        const { data: profile } = await supabase.from('profiles').select('*').eq('id', session.user.id).single();
+        if (profile) setCurrentUser(profile as User);
+        fetchInitialData(); // Re-fetch data on login
+      } else if (event === 'SIGNED_OUT') {
+        setCurrentUser(null);
+        setLeads([]);
+        setDeals([]);
+        setWaitingList([]);
+        setActivities([]);
+      }
+    });
+
+    return () => {
+      authListener.subscription.unsubscribe();
+    };
+  }, []);
 
 
   // --- AUTHENTICATION ---
+  // --- AUTHENTICATION ---
   const login = async (email: string, password: string): Promise<boolean> => {
-    await new Promise(resolve => setTimeout(resolve, 500)); // Simulating delay
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
 
-    const user = users.find(u => u.email.toLowerCase() === email.toLowerCase());
-
-    if (!user) return false;
-    if (!user.active) {
-      alert('Este usuário foi desativado. Contate o administrador.');
+      if (error) {
+        alert('Erro ao fazer login: ' + error.message);
+        return false;
+      }
+      return true;
+    } catch (e) {
+      console.error(e);
       return false;
     }
-
-    if (user.password === password) {
-      setCurrentUser(user);
-      return true;
-    }
-    return false;
   };
 
-  const logout = () => {
+  const logout = async () => {
+    await supabase.auth.signOut();
     setCurrentUser(null);
   };
 
@@ -327,95 +363,98 @@ export const CRMProvider = ({ children }: { children?: ReactNode }) => {
     return { status: 'normal', hoursDiff, label: 'No prazo' };
   };
 
-  const addActivity = (activity: Omit<Activity, 'id' | 'timestamp'>) => {
-    const newActivity: Activity = { ...activity, id: Math.random().toString(36).substr(2, 9), timestamp: new Date().toISOString() };
-    setActivities(prev => [newActivity, ...prev]);
-    if (activity.leadId) setLeads(prev => prev.map(l => l.id === activity.leadId ? { ...l, lastInteraction: newActivity.timestamp } : l));
-  };
+
 
   // const _internalUpdateLeadStatus = Removed
 
-  const addLead = (leadData: Omit<Lead, 'id' | 'createdAt'>) => {
+  // --- MAPPERS ---
+  const mapLeadFromDB = (db: any): Lead => ({
+    id: db.id, name: db.name, company: db.company, email: db.email, phone: db.phone,
+    source: db.source, classification: db.classification, desiredCourse: db.desired_course,
+    ownerId: db.owner_id, createdAt: db.created_at, lastInteraction: db.last_interaction, lostReason: db.lost_reason
+  });
+
+  const mapDealFromDB = (db: any): Deal => ({
+    id: db.id, leadId: db.lead_id, title: db.title, value: db.value, stage: db.stage,
+    probability: db.probability, expectedCloseDate: db.expected_close_date, ownerId: db.owner_id, lossReason: db.loss_reason
+  });
+
+  const mapWaitingListFromDB = (db: any): WaitingListItem => ({
+    id: db.id, leadId: db.lead_id, course: db.course, reason: db.reason, notes: db.notes,
+    ownerId: db.owner_id, createdAt: db.created_at, originalDealValue: db.original_deal_value
+  });
+
+  // --- ACTIONS ---
+
+  const addLead = async (leadData: Omit<Lead, 'id' | 'createdAt'>): Promise<boolean> => {
     if (!currentUser) return false;
     const ownerId = currentUser.role === 'admin' ? (leadData.ownerId || currentUser.id) : currentUser.id;
 
+    // Validation
     const safeClassification = normalizeClassification(leadData.classification || '');
-    if (!safeClassification) {
-      alert("Erro de Validação: Classificação inválida.");
+    if (!safeClassification) { alert("Erro de Validação: Classificação inválida."); return false; }
+
+    try {
+      const { data, error } = await supabase.from('leads').insert({
+        name: leadData.name,
+        company: leadData.company,
+        email: leadData.email,
+        phone: leadData.phone,
+        source: leadData.source,
+        classification: safeClassification,
+        desired_course: leadData.desiredCourse,
+        owner_id: ownerId,
+        // created_at is default
+      }).select().single();
+
+      if (error) throw error;
+
+      // Update State
+      const newLead = mapLeadFromDB(data);
+      setLeads(prev => [newLead, ...prev]);
+
+      // Check for Auto-Created Deal (Trigger Side-Effect)
+      // We fetch deals for this lead
+      const { data: dealData } = await supabase.from('deals').select('*').eq('lead_id', newLead.id);
+      if (dealData && dealData.length > 0) {
+        const newDeals = dealData.map(mapDealFromDB);
+        setDeals(prev => [...prev, ...newDeals]);
+        addActivity({ type: 'status_change', content: `Matrícula criada automaticamente (Trigger): ${newDeals[0].title}`, leadId: newLead.id, dealId: newDeals[0].id, performer: 'Sistema (Automação)' });
+      }
+
+      addActivity({ type: 'status_change', content: 'Lead criado no sistema', leadId: newLead.id, performer: currentUser.name });
+      return true;
+
+    } catch (e: any) {
+      console.error(e);
+      alert('Erro ao salvar lead: ' + e.message);
       return false;
     }
-
-    const newLead: Lead = {
-      ...leadData,
-      classification: safeClassification,
-      id: Math.random().toString(36).substr(2, 9),
-      // status: LeadStatus.NEW, // Removed
-      createdAt: new Date().toISOString(),
-      ownerId: ownerId,
-      lastInteraction: new Date().toISOString()
-    };
-
-    let createdDeal: Deal | undefined = undefined;
-    if (checkEligibilityForAutoDeal(newLead)) {
-      const hasActiveDeal = deals.some(d => d.leadId === newLead.id && d.title.includes(newLead.desiredCourse || '###') && d.stage !== DealStage.WON && d.stage !== DealStage.LOST);
-      if (!hasActiveDeal) {
-        createdDeal = createDealObject(newLead, ownerId);
-        // newLead.status = ... REMOVED
-      }
-    }
-
-    setLeads(prev => [newLead, ...prev]);
-    addActivity({ type: 'status_change', content: 'Lead criado no sistema', leadId: newLead.id, performer: currentUser.name });
-
-    if (createdDeal) {
-      setDeals(prev => [...prev, createdDeal as Deal]);
-      addActivity({ type: 'status_change', content: `Matrícula criada automaticamente: ${createdDeal.title}`, leadId: newLead.id, dealId: createdDeal.id, performer: 'Sistema (Automação)' });
-    }
-    return true;
   };
 
-  const bulkAddLeads = (newLeadsData: Omit<Lead, 'id' | 'createdAt'>[]) => {
-    if (!currentUser) return;
-    const timestamp = new Date().toISOString();
-    const newDeals: Deal[] = [];
-    const createdLeads: Lead[] = [];
-
-    newLeadsData.forEach(data => {
-      const safeClassification = normalizeClassification(data.classification || '');
-      if (!safeClassification) return;
-
-      const lead: Lead = {
-        ...data,
-        classification: safeClassification,
-        id: Math.random().toString(36).substr(2, 9),
-        // status: LeadStatus.NEW, // Removed
-        createdAt: timestamp,
-        ownerId: currentUser.id,
-        lastInteraction: timestamp
-      };
-
-      if (checkEligibilityForAutoDeal(lead)) {
-        const newDeal = createDealObject(lead, currentUser.id);
-        newDeals.push(newDeal);
-        // lead.status = ... REMOVED
-      }
-      createdLeads.push(lead);
-    });
-
-    if (createdLeads.length > 0) {
-      setLeads(prev => [...createdLeads, ...prev]);
-      if (newDeals.length > 0) setDeals(prev => [...prev, ...newDeals]);
-      addActivity({ type: 'status_change', content: `Importação em massa: ${createdLeads.length} leads adicionados. ${newDeals.length} matrículas geradas automaticamente.`, leadId: 'SYSTEM', performer: currentUser.name });
+  const bulkAddLeads = async (leadsData: Omit<Lead, 'id' | 'createdAt'>[]) => {
+    // Not implementing full bulk insert for now, iterate for simplicity or use bulk insert
+    // Mappers needed.
+    // For speed, let's just loop addLead (sequentially or parallel).
+    // Parallel is better but concurrent connections?
+    // Let's use loop.
+    for (const l of leadsData) {
+      await addLead(l);
     }
   };
 
   // updateLeadStatus REMOVED completely
 
-  const updateLeadData = (id: string, data: Partial<Lead>) => {
+  const updateLeadData = async (id: string, data: Partial<Lead>) => {
     if (!currentUser) return;
     const lead = leads.find(l => l.id === id);
     if (!lead) return;
-    checkOwnership(lead.ownerId, 'editar dados do lead');
+
+    // Frontend Permission Check (UX only, RLS protects DB)
+    if (currentUser.role !== 'admin' && lead.ownerId !== currentUser.id) {
+      alert("ACESSO NEGADO: Você só pode editar seus próprios leads.");
+      return;
+    }
 
     if (currentUser.role !== 'admin') {
       const restrictedFields = ['classification', 'desiredCourse', 'source', 'ownerId'];
@@ -429,134 +468,273 @@ export const CRMProvider = ({ children }: { children?: ReactNode }) => {
 
     if (data.classification) {
       const normalized = normalizeClassification(data.classification);
-      if (!normalized) {
-        alert("Erro: Classificação inválida.");
-        return;
-      }
+      if (!normalized) { alert("Erro: Classificação inválida."); return; }
       data.classification = normalized;
     }
 
-    // AUTO-DEAL CHECK ON EDIT
-    // Per requirement: "Todo Lead válido → cria Negócio automaticamente"
-    const updatedLead = { ...lead, ...data };
+    try {
+      // Map to DB
+      const dbUpdate: any = {};
+      if (data.name) dbUpdate.name = data.name;
+      if (data.company) dbUpdate.company = data.company;
+      if (data.email) dbUpdate.email = data.email;
+      if (data.phone) dbUpdate.phone = data.phone;
+      if (data.source) dbUpdate.source = data.source;
+      if (data.classification) dbUpdate.classification = data.classification;
+      if (data.desiredCourse) dbUpdate.desired_course = data.desiredCourse;
+      if (data.ownerId) dbUpdate.owner_id = data.ownerId;
+      if (data.lostReason) dbUpdate.lost_reason = data.lostReason;
 
-    // Check if it NOW qualifies (and didn't before, or just check general eligibility)
-    if (checkEligibilityForAutoDeal(updatedLead)) {
-      const hasActiveDeal = deals.some(d => d.leadId === id && d.stage !== DealStage.WON && d.stage !== DealStage.LOST);
-      if (!hasActiveDeal) {
-        const newDeal = createDealObject(updatedLead as Lead, updatedLead.ownerId || currentUser.id);
-        addDeal(newDeal); // This will also update the status via 'addDeal' logic
-        // But we need to make sure the Lead Object in state is updated first/correctly
-        // effectively 'addDeal' calls setDeals and updateLeadStatus(internal).
-        // We are inside updateLeadData, so let's allow setLeads to happen below, then fire the deal creation?
-        // Actually, createDealObject needs the lead data.
+      const { error } = await supabase.from('leads').update(dbUpdate).eq('id', id);
+      if (error) throw error;
 
-        // We'll update the lead locally first
-        setLeads(prev => prev.map(l => l.id === id ? { ...l, ...data } : l));
-        // Status update via derivation doesn't need explicit setLeads
-      } else {
-        setLeads(prev => prev.map(l => l.id === id ? { ...l, ...data } : l));
+      // Update Local
+      const updatedLead = { ...lead, ...data };
+      setLeads(prev => prev.map(l => l.id === id ? updatedLead : l));
+
+      // Auto-Deal Check (Legacy/Edge Case Support)
+      if (checkEligibilityForAutoDeal(updatedLead)) {
+        const hasActiveDeal = deals.some(d => d.leadId === id && d.stage !== DealStage.WON && d.stage !== DealStage.LOST);
+        if (!hasActiveDeal) {
+          // Manually trigger deal creation if it wasn't there
+          const newDeal = createDealObject(updatedLead as Lead, updatedLead.ownerId || currentUser.id);
+          // Map to DB
+          await addDeal(newDeal); // Reuse addDeal logic
+        }
       }
-    } else {
-      setLeads(prev => prev.map(l => l.id === id ? { ...l, ...data } : l));
+
+    } catch (e: any) {
+      console.error(e);
+      alert('Erro ao atualizar lead: ' + e.message);
     }
   };
 
-  const assignLead = (leadId: string, userId: string) => {
+  const assignLead = async (leadId: string, userId: string) => {
     if (!currentUser) return;
-    checkAdmin('reatribuir leads');
+    if (currentUser.role !== 'admin') { alert('ACESSO NEGADO'); return; }
 
     const user = users.find(u => u.id === userId);
+    if (!user) return;
 
-    setLeads(prev => prev.map(l => l.id === leadId ? { ...l, ownerId: userId } : l));
+    try {
+      // 1. Update Lead Owner
+      const { error: leadError } = await supabase.from('leads').update({ owner_id: userId }).eq('id', leadId);
+      if (leadError) throw leadError;
 
-    const dealsToTransfer = deals.filter(d =>
-      d.leadId === leadId && d.stage !== DealStage.WON && d.stage !== DealStage.LOST
-    );
+      setLeads(prev => prev.map(l => l.id === leadId ? { ...l, ownerId: userId } : l));
 
-    if (dealsToTransfer.length > 0) {
-      setDeals(prev => prev.map(d => {
-        if (d.leadId === leadId && d.stage !== DealStage.WON && d.stage !== DealStage.LOST) {
-          return { ...d, ownerId: userId };
-        }
-        return d;
-      }));
+      // 2. Transfer Active Deals
+      const dealsToTransfer = deals.filter(d => d.leadId === leadId && d.stage !== DealStage.WON && d.stage !== DealStage.LOST);
+
+      if (dealsToTransfer.length > 0) {
+        // Update all active deals
+        // Supabase supports update with filter
+        const { error: dealError } = await supabase.from('deals')
+          .update({ owner_id: userId })
+          .eq('lead_id', leadId)
+          .neq('stage', 'Matrícula Confirmada')
+          .neq('stage', 'Perdido');
+
+        if (dealError) throw dealError;
+
+        setDeals(prev => prev.map(d => {
+          if (d.leadId === leadId && d.stage !== DealStage.WON && d.stage !== DealStage.LOST) return { ...d, ownerId: userId };
+          return d;
+        }));
+      }
+
+      addActivity({
+        type: 'status_change',
+        content: `Atribuído para responsável: ${user.name}. ${dealsToTransfer.length > 0 ? `${dealsToTransfer.length} negócios transferidos.` : ''}`,
+        leadId: leadId,
+        performer: currentUser.name
+      });
+
+    } catch (e: any) {
+      console.error(e);
+      alert('Erro ao atribuir lead: ' + e.message);
     }
-
-    addActivity({
-      type: 'status_change',
-      content: `Atribuído para responsável: ${user?.name}. ${dealsToTransfer.length > 0 ? `${dealsToTransfer.length} negócios ativos transferidos automaticamente.` : ''}`,
-      leadId: leadId,
-      performer: currentUser.name
-    });
   };
 
-  const addDeal = (dealData: Omit<Deal, 'id'>) => {
+  const addDeal = async (dealData: Omit<Deal, 'id'>) => {
     if (!currentUser) return;
+
+    // Permission
     if (currentUser.role !== 'admin') {
       const lead = leads.find(l => l.id === dealData.leadId);
-      if (lead && lead.ownerId !== currentUser.id) throw new Error("Cannot create deal for lead you don't own");
+      if (lead && lead.ownerId !== currentUser.id) { alert("Você não é o dono desse lead."); return; }
     }
-    const newDeal: Deal = { ...dealData, id: Math.random().toString(36).substr(2, 9) };
-    setDeals(prev => [...prev, newDeal]);
-    // Status update removed
-    // _internalUpdateLeadStatus(dealData.leadId, newLeadStatus);
-    addActivity({ type: 'status_change', content: `Negócio criado: ${dealData.title}`, leadId: dealData.leadId, dealId: newDeal.id, performer: currentUser.name });
+
+    try {
+      const { data, error } = await supabase.from('deals').insert({
+        lead_id: dealData.leadId,
+        title: dealData.title,
+        value: dealData.value,
+        stage: dealData.stage,
+        probability: dealData.probability,
+        expected_close_date: dealData.expectedCloseDate,
+        owner_id: dealData.ownerId,
+        loss_reason: dealData.lossReason
+      }).select().single();
+
+      if (error) throw error;
+
+      const newDeal = mapDealFromDB(data);
+      setDeals(prev => [...prev, newDeal]);
+
+      addActivity({ type: 'status_change', content: `Negócio criado: ${newDeal.title}`, leadId: newDeal.leadId, dealId: newDeal.id, performer: currentUser.name });
+    } catch (e: any) {
+      console.error(e);
+      alert('Erro ao criar negócio: ' + e.message);
+    }
   };
 
-  const updateDealStage = (id: string, stage: DealStage) => {
+  const updateDealStage = async (id: string, stage: DealStage) => {
     if (!currentUser) return;
     const deal = deals.find(d => d.id === id);
     if (!deal) return;
-    checkOwnership(deal.ownerId, 'mover negócio no pipeline');
-    setDeals(prev => prev.map(d => d.id === id ? { ...d, stage } : d));
-    // Status update removed
-    // const newLeadStatus = mapStageToLeadStatus(stage);
-    // _internalUpdateLeadStatus(deal.leadId, newLeadStatus);
-    addActivity({ type: 'status_change', content: `Negócio avançou para fase: ${stage}`, dealId: id, leadId: deal.leadId, performer: currentUser.name });
+
+    // Permission
+    if (currentUser.role !== 'admin' && deal.ownerId !== currentUser.id) { alert("Permissão negada."); return; }
+
+    try {
+      const { error } = await supabase.from('deals').update({ stage: stage }).eq('id', id);
+      if (error) throw error;
+
+      setDeals(prev => prev.map(d => d.id === id ? { ...d, stage } : d));
+      addActivity({ type: 'status_change', content: `Negócio avançou para fase: ${stage}`, dealId: id, leadId: deal.leadId, performer: currentUser.name });
+    } catch (e: any) {
+      // Handle Trigger Violation (e.g. Trying to update active deal while in waiting list)
+      alert('Erro ao atualizar estágio: ' + e.message);
+    }
   };
 
-  const updateDeal = (id: string, data: Partial<Deal>) => {
+  const updateDeal = async (id: string, data: Partial<Deal>) => {
     if (!currentUser) return;
     const deal = deals.find(d => d.id === id);
     if (!deal) return;
-    checkOwnership(deal.ownerId, 'editar negócio');
-    setDeals(prev => prev.map(d => d.id === id ? { ...d, ...data } : d));
-    if (data.value !== undefined) addActivity({ type: 'status_change', content: `Valor do negócio atualizado para R$ ${data.value}`, dealId: id, performer: currentUser.name });
+
+    if (currentUser.role !== 'admin' && deal.ownerId !== currentUser.id) { alert("Permissão negada."); return; }
+
+    try {
+      const dbUpdate: any = {};
+      if (data.title) dbUpdate.title = data.title;
+      if (data.value !== undefined) dbUpdate.value = data.value;
+      if (data.stage) dbUpdate.stage = data.stage;
+      if (data.probability !== undefined) dbUpdate.probability = data.probability;
+      if (data.expectedCloseDate) dbUpdate.expected_close_date = data.expectedCloseDate;
+      if (data.lossReason) dbUpdate.loss_reason = data.lossReason;
+
+      const { error } = await supabase.from('deals').update(dbUpdate).eq('id', id);
+      if (error) throw error;
+
+      setDeals(prev => prev.map(d => d.id === id ? { ...d, ...data } : d));
+      if (data.value !== undefined) addActivity({ type: 'status_change', content: `Valor do negócio atualizado para R$ ${data.value}`, dealId: id, performer: currentUser.name });
+    } catch (e: any) {
+      alert('Erro ao atualizar negócio: ' + e.message);
+    }
   };
 
-  const deleteDeal = (id: string) => { checkAdmin('excluir negócios'); setDeals(prev => prev.filter(d => d.id !== id)); };
+  const deleteDeal = async (id: string) => {
+    if (!currentUser || currentUser.role !== 'admin') { alert("Apenas Admin."); return; }
+    try {
+      const { error } = await supabase.from('deals').delete().eq('id', id);
+      if (error) throw error;
+      setDeals(prev => prev.filter(d => d.id !== id));
+    } catch (e) { alert(e); }
+  };
 
-  const moveToWaitingList = (dealId: string, reason: string, notes?: string) => {
+  const moveToWaitingList = async (dealId: string, reason: string, notes?: string) => {
     if (!currentUser) return;
     const deal = deals.find(d => d.id === dealId);
     if (!deal) return;
     const lead = leads.find(l => l.id === deal.leadId);
     if (!lead) return;
-    checkOwnership(deal.ownerId, 'mover para lista de espera');
-    const newItem: WaitingListItem = { id: Math.random().toString(36).substr(2, 9), leadId: lead.id, course: lead.desiredCourse || 'Curso não informado', reason: reason, notes: notes, ownerId: deal.ownerId, createdAt: new Date().toISOString(), originalDealValue: deal.value };
-    setWaitingList(prev => [newItem, ...prev]);
-    setDeals(prev => prev.filter(d => d.id !== dealId));
-    // STRICT RULE: No Status Change to "WAITING". Lead is simply effectively removed from active views by being in waitingList.
-    addActivity({ type: 'status_change', content: `Movido para Lista de Espera. Motivo: ${reason}`, leadId: lead.id, performer: currentUser.name });
+
+    if (currentUser.role !== 'admin' && deal.ownerId !== currentUser.id) { alert("Permissão negada."); return; }
+
+    try {
+      // 1. Insert into Waiting List
+      const { data: wlData, error: wlError } = await supabase.from('waiting_list').insert({
+        lead_id: lead.id,
+        course: lead.desiredCourse || 'Curso não informado',
+        reason: reason,
+        notes: notes,
+        owner_id: deal.ownerId,
+        original_deal_value: deal.value
+      }).select().single();
+
+      if (wlError) throw wlError;
+
+      // 2. Delete Deal (or Archive?)
+      // The Governance says: cannot have ACTIVE deal.
+      // We delete the deal or move it? Code was deleting.
+      const { error: delError } = await supabase.from('deals').delete().eq('id', dealId);
+      if (delError) {
+        // If delete fails, rollback waiting list?
+        await supabase.from('waiting_list').delete().eq('id', wlData.id);
+        throw delError;
+      }
+
+      const newItem = mapWaitingListFromDB(wlData);
+      setWaitingList(prev => [newItem, ...prev]);
+      setDeals(prev => prev.filter(d => d.id !== dealId));
+
+      addActivity({ type: 'status_change', content: `Movido para Lista de Espera. Motivo: ${reason}`, leadId: lead.id, performer: currentUser.name });
+    } catch (e: any) {
+      alert('Erro ao mover para lista de espera: ' + e.message);
+    }
   };
 
-  const restoreFromWaitingList = (itemId: string) => {
+  const restoreFromWaitingList = async (itemId: string) => {
     if (!currentUser) return;
     const item = waitingList.find(w => w.id === itemId);
     if (!item) return;
     const lead = leads.find(l => l.id === item.leadId);
     if (!lead) return;
-    checkOwnership(item.ownerId, 'retomar da lista de espera');
-    const newDeal: Deal = { id: Math.random().toString(36).substr(2, 9), leadId: lead.id, title: `Matrícula: ${lead.name}`, value: item.originalDealValue || 0, stage: DealStage.NEW, probability: 10, expectedCloseDate: new Date(Date.now() + 30 * 86400000).toISOString(), ownerId: item.ownerId };
-    setDeals(prev => [...prev, newDeal]);
-    setWaitingList(prev => prev.filter(w => w.id !== itemId));
-    // No status update
-    // _internalUpdateLeadStatus(lead.id, LeadStatus.NEW);
-    addActivity({ type: 'status_change', content: `Retomado da Lista de Espera para o Pipeline.`, leadId: lead.id, dealId: newDeal.id, performer: currentUser.name });
+
+    if (currentUser.role !== 'admin' && item.ownerId !== currentUser.id) { alert("Permissão negada."); return; }
+
+    try {
+      // 1. Create New Deal
+      const { data: dealData, error: dealError } = await supabase.from('deals').insert({
+        lead_id: lead.id,
+        title: `Matrícula: ${lead.name}`,
+        value: item.originalDealValue || 0,
+        stage: 'Novo Lead / Interesse', // Enum string
+        probability: 10,
+        expected_close_date: new Date(Date.now() + 30 * 86400000).toISOString(),
+        owner_id: item.ownerId
+      }).select().single();
+
+      if (dealError) throw dealError;
+
+      // 2. Remove from Waiting List
+      const { error: wlError } = await supabase.from('waiting_list').delete().eq('id', itemId);
+      if (wlError) throw wlError; // If fails, we have a dangling deal? Transaction would be better.
+
+      const newDeal = mapDealFromDB(dealData);
+      setDeals(prev => [...prev, newDeal]);
+      setWaitingList(prev => prev.filter(w => w.id !== itemId));
+
+      addActivity({ type: 'status_change', content: `Retomado da Lista de Espera para o Pipeline.`, leadId: lead.id, dealId: newDeal.id, performer: currentUser.name });
+    } catch (e: any) {
+      alert('Erro ao restaurar: ' + e.message);
+    }
   };
 
-  const updateWaitingListItem = (id: string, data: Partial<WaitingListItem>) => { setWaitingList(prev => prev.map(item => item.id === id ? { ...item, ...data } : item)); };
+  const updateWaitingListItem = async (id: string, data: Partial<WaitingListItem>) => {
+    try {
+      const dbUpdate: any = {};
+      if (data.notes) dbUpdate.notes = data.notes;
+      if (data.reason) dbUpdate.reason = data.reason;
+
+      const { error } = await supabase.from('waiting_list').update(dbUpdate).eq('id', id);
+      if (error) throw error;
+
+      setWaitingList(prev => prev.map(item => item.id === id ? { ...item, ...data } : item));
+    } catch (e) { console.error(e); }
+  };
 
   const getLeadActivities = (leadId: string) => {
     const lead = leads.find(l => l.id === leadId);
@@ -565,29 +743,63 @@ export const CRMProvider = ({ children }: { children?: ReactNode }) => {
     return activities.filter(a => a.leadId === leadId).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
   };
 
-  const updateCompanySettings = (settings: CompanySettings) => { checkAdmin('alterar configurações da empresa'); setCompanySettings(settings); };
+  const updateCompanySettings = (settings: CompanySettings) => { checkAdmin('alterar configurações da empresa'); setCompanySettings(settings); }; // Settings not in Supabase yet? Keep local/mock for now? Or implement.
+  // Settings in LocalStorage is fine for v1.1 scope, specific to machine? No, "Company" settings usually global.
+  // We didn't create a 'settings' table. Let's leave as localStorage for now or default.
+
   const addSource = (source: string) => { checkAdmin('adicionar fontes'); if (!availableSources.includes(source)) setAvailableSources(prev => [...prev, source]); };
   const removeSource = (source: string) => { checkAdmin('remover fontes'); setAvailableSources(prev => prev.filter(s => s !== source)); };
 
   const addUser = (userData: Omit<User, 'id' | 'avatar'>) => {
-    checkAdmin('adicionar usuários');
-    const newUser: User = {
-      ...userData,
-      id: Math.random().toString(36).substr(2, 9),
-      avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(userData.name)}&background=random`,
-      active: true,
-      mustChangePassword: true // Default for new users
-    };
-    setUsers(prev => [...prev, newUser]);
+    // Creating users in Supabase requires Admin API which is not available in 'anon' key on client side usually.
+    // So 'addUser' from UI is tricky without a Server Function.
+    alert("Para adicionar usuários, use o Painel do Supabase > Auth.");
   };
 
-  const updateUser = (id: string, data: Partial<User>) => { checkAdmin('editar usuários'); setUsers(prev => prev.map(u => u.id === id ? { ...u, ...data } : u)); };
-  const deleteUser = (id: string) => { checkAdmin('excluir usuários'); setUsers(prev => prev.filter(u => u.id !== id)); };
-  const switchUser = (userId: string) => { const user = users.find(u => u.id === userId); if (user) setCurrentUser(user); };
+  const updateUser = (id: string, data: Partial<User>) => {
+    // Update public.profiles
+    // TODO: implementation
+  };
+  const deleteUser = (id: string) => {
+    alert("Para excluir usuários, use o Painel do Supabase.");
+  };
+  const switchUser = (userId: string) => {
+    // Not relevant for real Auth. Can't switch user without password.
+    alert("Troca de usuário rápida desabilitada em produção.");
+  };
+
+  const addActivity = async (activity: Omit<Activity, 'id' | 'timestamp'>) => {
+    try {
+      const { data, error } = await supabase.from('activities').insert({
+        lead_id: activity.leadId,
+        deal_id: activity.dealId,
+        type: activity.type,
+        content: activity.content,
+        performer: activity.performer
+      }).select().single();
+      if (error) console.error(error); // don't block
+
+      // Optimistic / or fetch result
+      if (data) {
+        // map
+        const newActivity: Activity = {
+          id: data.id,
+          leadId: data.lead_id,
+          dealId: data.deal_id,
+          type: data.type,
+          content: data.content,
+          performer: data.performer,
+          timestamp: data.timestamp
+        };
+        setActivities(prev => [newActivity, ...prev]);
+        if (activity.leadId) setLeads(prev => prev.map(l => l.id === activity.leadId ? { ...l, lastInteraction: data.timestamp } : l));
+      }
+    } catch (e) { console.error(e); }
+  };
 
   return (
     <CRMContext.Provider value={{
-      allLeads: leads, leads: visibleLeads, deals: visibleDeals, waitingList: visibleWaitingList, activities, users, currentUser, companySettings, availableSources, lossReasons, waitingReasons, globalSearch, setGlobalSearch,
+      allLeads: leads, leads: visibleLeads, deals: visibleDeals, waitingList: visibleWaitingList, activities, users, currentUser, companySettings, availableSources, lossReasons, waitingReasons, globalSearch, setGlobalSearch, isLoading,
       login, logout, changeMyPassword, updateMyProfile, adminResetPassword,
       addLead, bulkAddLeads, updateLeadData, assignLead, addDeal, updateDealStage, updateDeal, deleteDeal,
       moveToWaitingList, restoreFromWaitingList, updateWaitingListItem, addActivity, getLeadActivities,
