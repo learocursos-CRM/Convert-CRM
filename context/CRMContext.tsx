@@ -289,7 +289,37 @@ export const CRMProvider = ({ children }: { children?: ReactNode }) => {
       setUsers([]);
       setGlobalSearch('');
 
-      // 3. Force reload to clear any cached state in memory
+      // 3. AGGRESSIVE CACHE CLEARING - This solves the "clear cache fixes it" issue
+      // Clear LocalStorage (but preserve Supabase auth keys for clean logout)
+      const supabaseKeys = Object.keys(localStorage).filter(key => key.startsWith('sb-'));
+      const supabaseAuthValues: { [key: string]: string } = {};
+      supabaseKeys.forEach(key => {
+        const value = localStorage.getItem(key);
+        if (value) supabaseAuthValues[key] = value;
+      });
+
+      localStorage.clear();
+      // Restore only Supabase auth keys to allow proper logout flow
+      for (const key in supabaseAuthValues) {
+        localStorage.setItem(key, supabaseAuthValues[key]);
+      }
+
+      // Clear SessionStorage completely
+      sessionStorage.clear();
+
+      // Clear IndexedDB (Supabase cache)
+      try {
+        const databases = await window.indexedDB.databases();
+        databases.forEach(db => {
+          if (db.name) {
+            window.indexedDB.deleteDatabase(db.name);
+          }
+        });
+      } catch (e) {
+        console.warn('Could not clear IndexedDB:', e);
+      }
+
+      // 4. Force reload to clear any cached state in memory
       // This prevents the "infinite loading" bug on re-login
       window.location.href = '/#/login';
     } catch (error) {
