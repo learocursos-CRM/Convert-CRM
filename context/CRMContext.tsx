@@ -945,37 +945,75 @@ export const CRMProvider = ({ children }: { children?: ReactNode }) => {
     const lead = leads.find(l => l.id === deal.leadId);
     if (!lead) return;
 
-    if (currentUser.role !== 'admin' && deal.ownerId !== currentUser.id) { alert("Permissão negada."); return; }
+    if (currentUser.role !== 'admin' && deal.ownerId !== currentUser.id) {
+      alert("Permissão negada.");
+      return;
+    }
 
     try {
-      // 1. Insert into Waiting List
-      const { data: wlData, error: wlError } = await supabase.from('waiting_list').insert({
-        lead_id: lead.id,
-        course: lead.desiredCourse || 'Curso não informado',
-        reason: reason,
-        notes: notes,
-        owner_id: deal.ownerId,
-        original_deal_value: deal.value
-      }).select().single();
+      // ATOMIC TRANSACTION: Close Deal + Move to Waiting List
+      // Institutional Rule: Lead CANNOT be in Waiting List with active Deal
 
-      if (wlError) throw wlError;
+      // 1. Close the active Deal first (remove from pipeline, SLA, forecast)
+      // This is not "Lost" or "Won" - it's "Moved to Waiting List"
+      const { error: closeDealError } = await supabase
+        .from('deals')
+        .update({
+          stage: 'waiting_list', // Special stage - out of pipeline
+          closed_at: new Date().toISOString(),
+          closed_reason: 'Movido para Lista de Espera'
+        })
+        .eq('id', dealId);
 
-      // 2. Delete Deal (or Archive?)
-      // The Governance says: cannot have ACTIVE deal.
-      // We delete the deal or move it? Code was deleting.
-      const { error: delError } = await supabase.from('deals').delete().eq('id', dealId);
-      if (delError) {
-        // If delete fails, rollback waiting list?
-        await supabase.from('waiting_list').delete().eq('id', wlData.id);
-        throw delError;
+      if (closeDealError) {
+        throw new Error(`Erro ao encerrar negócio: ${closeDealError.message}`);
       }
 
+      // 2. Insert into Waiting List
+      const { data: wlData, error: wlError } = await supabase
+        .from('waiting_list')
+        .insert({
+          lead_id: lead.id,
+          course: lead.desiredCourse || 'Curso não informado',
+          reason: reason,
+          notes: notes,
+          owner_id: deal.ownerId,
+          original_deal_value: deal.value
+        })
+        .select()
+        .single();
+
+      if (wlError) {
+        // Rollback: reopen deal
+        await supabase
+          .from('deals')
+          .update({
+            stage: deal.stage, // Restore original stage
+            closed_at: null,
+            closed_reason: null
+          })
+          .eq('id', dealId);
+        throw new Error(`Erro ao criar item na lista de espera: ${wlError.message}`);
+      }
+
+      // 3. Update local state
       const newItem = mapWaitingListFromDB(wlData);
       setWaitingList(prev => [newItem, ...prev]);
+
+      // Remove deal from local state (it's now closed)
       setDeals(prev => prev.filter(d => d.id !== dealId));
 
-      addActivity({ type: 'status_change', content: `Movido para Lista de Espera. Motivo: ${reason}`, leadId: lead.id, performer: currentUser.name });
+      // 4. Log activity
+      addActivity({
+        type: 'status_change',
+        content: `Movido para Lista de Espera. Negócio encerrado automaticamente. Motivo: ${reason}`,
+        leadId: lead.id,
+        performer: currentUser.name
+      });
+
+      console.log(`[WAITING_LIST] Lead ${lead.id} moved to waiting list. Deal ${dealId} closed automatically.`);
     } catch (e: any) {
+      console.error('[WAITING_LIST] Error:', e);
       alert('Erro ao mover para lista de espera: ' + e.message);
     }
   };

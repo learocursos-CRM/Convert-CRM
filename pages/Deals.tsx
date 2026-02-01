@@ -256,9 +256,16 @@ const Deals = () => {
                                 <PauseCircle className="text-amber-600" size={32} />
                             </div>
                             <h3 className="text-xl font-bold text-gray-900">Mover para Lista de Espera</h3>
-                            <p className="text-sm text-gray-500">
-                                O negócio sairá do Pipeline, mas não será marcado como perdido.
-                            </p>
+                            <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                                <p className="text-sm text-amber-900 font-medium">
+                                    ⚠️ Este Lead possui um Negócio ativo.
+                                </p>
+                                <p className="text-xs text-amber-800 mt-2">
+                                    Ao confirmar, o <strong>Negócio será encerrado automaticamente</strong> e o Lead será movido para a Lista de Espera.
+                                    <br /><br />
+                                    O Negócio sairá do Pipeline, SLA e Forecast, mas não será marcado como "Perdido".
+                                </p>
+                            </div>
                         </div>
 
                         <form onSubmit={handleConfirmWait} className="space-y-4">
