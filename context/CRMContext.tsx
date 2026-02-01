@@ -196,6 +196,27 @@ export const CRMProvider = ({ children }: { children?: ReactNode }) => {
     let mounted = true;
 
     const init = async () => {
+      // Cache health check - detect and clear corrupted state
+      try {
+        // Check if there are any signs of corrupted cache
+        const localStorageKeys = Object.keys(localStorage);
+        const hasOldData = localStorageKeys.some(key =>
+          key.includes('leads') || key.includes('deals') || key.includes('crm')
+        );
+
+        if (hasOldData) {
+          console.warn('Detected potentially corrupted cache, clearing...');
+          // Clear old cached data but preserve Supabase auth
+          localStorageKeys.forEach(key => {
+            if (!key.startsWith('sb-')) {
+              localStorage.removeItem(key);
+            }
+          });
+        }
+      } catch (e) {
+        console.warn('Cache health check failed:', e);
+      }
+
       await fetchInitialData();
     };
     init();
