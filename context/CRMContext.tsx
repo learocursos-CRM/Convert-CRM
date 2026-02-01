@@ -978,7 +978,7 @@ export const CRMProvider = ({ children }: { children?: ReactNode }) => {
     <CRMContext.Provider value={{
       allLeads: leads, leads: visibleLeads, deals: visibleDeals, waitingList: visibleWaitingList, activities, users, currentUser, companySettings, availableSources, lossReasons, waitingReasons, globalSearch, setGlobalSearch, isLoading,
       login, logout, changeMyPassword, updateMyProfile, adminResetPassword,
-      addLead, bulkAddLeads, updateLeadData, assignLead, addDeal, updateDealStage, updateDeal, deleteDeal, deleteLead, deleteLead,
+      addLead, bulkAddLeads, updateLeadData, assignLead, addDeal, updateDealStage, updateDeal, deleteDeal, deleteLead,
       moveToWaitingList, restoreFromWaitingList, updateWaitingListItem, addActivity, getLeadActivities,
       updateCompanySettings, addSource, removeSource, addUser, updateUser, deleteUser, switchUser,
       getLeadSLA, getLeadPipelineStatus, runAutoArchiving, normalizeClassification
