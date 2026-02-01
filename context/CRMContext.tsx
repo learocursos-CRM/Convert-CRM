@@ -101,40 +101,35 @@ export const CRMProvider = ({ children }: { children?: ReactNode }) => {
 
   const fetchInitialData = async () => {
     setIsLoading(true);
-
-    // Timeout protection: Force exit loading after 15 seconds
-    const timeoutId = setTimeout(() => {
-      console.error('CRITICAL: fetchInitialData timeout after 15s - forcing exit from loading state');
-      setIsLoading(false);
-      alert('Erro ao carregar dados. Por favor, faça logout e tente novamente.');
-    }, 15000);
+    console.log('[FETCH] Starting fetchInitialData - NO TIMEOUTS, will wait for data...');
 
     try {
       // Fetch Session
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      console.log('[FETCH] Session:', session ? 'Found' : 'None');
 
       if (sessionError) {
-        console.error('Session error:', sessionError);
-        clearTimeout(timeoutId);
+        console.error('[FETCH] Session error:', sessionError);
         setIsLoading(false);
         return;
       }
 
       if (session?.user) {
-        // Fetch User Profile with timeout
+        // Fetch User Profile
+        console.log('[FETCH] Fetching profile...');
         const { data: profile, error: profileError } = await supabase
           .from('profiles')
           .select('*')
           .eq('id', session.user.id)
           .single();
 
+        console.log('[FETCH] Profile result:', profile ? 'Success' : 'Failed');
+
         if (profileError) {
-          console.error('Profile fetch error:', profileError);
-          // If profile doesn't exist, force logout to prevent zombie session
-          if (profileError.code === 'PGRST116') { // No rows returned
-            console.error('CRITICAL: Profile missing for authenticated user - forcing logout');
+          console.error('[FETCH] Profile error:', profileError);
+          if (profileError.code === 'PGRST116') {
+            console.error('[FETCH] Profile missing - forcing logout');
             await supabase.auth.signOut();
-            clearTimeout(timeoutId);
             setIsLoading(false);
             alert('Perfil de usuário não encontrado. Por favor, contate o administrador.');
             return;
@@ -149,30 +144,24 @@ export const CRMProvider = ({ children }: { children?: ReactNode }) => {
         }
       }
 
-      // Fetch Global Data with individual timeouts and graceful failure
-      // This allows login to succeed even if some queries are slow
-      const queryTimeout = 8000; // 8 seconds per query
-
-      const fetchWithTimeout = async (promise: Promise<any>, name: string) => {
-        const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error(`${name} query timeout`)), queryTimeout)
-        );
-
-        try {
-          return await Promise.race([promise, timeoutPromise]);
-        } catch (error) {
-          console.error(`${name} fetch failed or timed out:`, error);
-          return { data: null, error };
-        }
-      };
+      // Fetch ALL data - NO TIMEOUTS, JUST WAIT
+      console.log('[FETCH] Loading all data (no timeouts)...');
 
       const [leadsRes, dealsRes, waitingRes, activitiesRes, profilesRes] = await Promise.all([
-        fetchWithTimeout(Promise.resolve(supabase.from('leads').select('*').order('created_at', { ascending: false })), 'Leads'),
-        fetchWithTimeout(Promise.resolve(supabase.from('deals').select('*')), 'Deals'),
-        fetchWithTimeout(Promise.resolve(supabase.from('waiting_list').select('*')), 'WaitingList'),
-        fetchWithTimeout(Promise.resolve(supabase.from('activities').select('*').order('timestamp', { ascending: false }).limit(500)), 'Activities'),
-        fetchWithTimeout(Promise.resolve(supabase.from('profiles').select('*')), 'Profiles')
+        supabase.from('leads').select('*').order('created_at', { ascending: false }),
+        supabase.from('deals').select('*'),
+        supabase.from('waiting_list').select('*'),
+        supabase.from('activities').select('*').order('timestamp', { ascending: false }).limit(500),
+        supabase.from('profiles').select('*')
       ]);
+
+      console.log('[FETCH] Data received:', {
+        leads: leadsRes.data?.length || 0,
+        deals: dealsRes.data?.length || 0,
+        waiting: waitingRes.data?.length || 0,
+        activities: activitiesRes.data?.length || 0,
+        profiles: profilesRes.data?.length || 0
+      });
 
       if (leadsRes.data) setLeads(leadsRes.data.map(mapLeadFromDB));
       if (dealsRes.data) setDeals(dealsRes.data.map(mapDealFromDB));
@@ -183,12 +172,12 @@ export const CRMProvider = ({ children }: { children?: ReactNode }) => {
         mustChangePassword: p.must_change_password
       } as User)));
 
-      clearTimeout(timeoutId);
+      console.log('[FETCH] All data loaded successfully!');
     } catch (error) {
-      console.error('CRITICAL: Error fetching initial data:', error);
-      clearTimeout(timeoutId);
+      console.error('[FETCH] CRITICAL ERROR:', error);
     } finally {
-      setIsLoading(false); // GUARANTEE: Never stay in infinite loading
+      setIsLoading(false);
+      console.log('[FETCH] Loading complete');
     }
   };
 
