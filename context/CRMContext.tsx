@@ -196,25 +196,53 @@ export const CRMProvider = ({ children }: { children?: ReactNode }) => {
     let mounted = true;
 
     const init = async () => {
-      // Cache health check - detect and clear corrupted state
-      try {
-        // Check if there are any signs of corrupted cache
-        const localStorageKeys = Object.keys(localStorage);
-        const hasOldData = localStorageKeys.some(key =>
-          key.includes('leads') || key.includes('deals') || key.includes('crm')
-        );
+      // CACHE VERSIONING SYSTEM - Forces complete reset if version mismatches
+      const CACHE_VERSION = 'v2.0'; // Increment this to force cache clear on all clients
+      const currentVersion = localStorage.getItem('crm_cache_version');
 
-        if (hasOldData) {
-          console.warn('Detected potentially corrupted cache, clearing...');
-          // Clear old cached data but preserve Supabase auth
-          localStorageKeys.forEach(key => {
-            if (!key.startsWith('sb-')) {
-              localStorage.removeItem(key);
-            }
-          });
+      if (currentVersion !== CACHE_VERSION) {
+        console.warn(`Cache version mismatch (${currentVersion} !== ${CACHE_VERSION}). Forcing complete cache reset...`);
+
+        // NUCLEAR OPTION: Clear everything except Supabase auth
+        const keysToPreserve: string[] = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && key.startsWith('sb-')) {
+            keysToPreserve.push(key);
+          }
         }
-      } catch (e) {
-        console.warn('Cache health check failed:', e);
+
+        const preservedValues: { [key: string]: string } = {};
+        keysToPreserve.forEach(key => {
+          const value = localStorage.getItem(key);
+          if (value) preservedValues[key] = value;
+        });
+
+        // Clear all storage
+        localStorage.clear();
+        sessionStorage.clear();
+
+        // Restore auth keys
+        Object.keys(preservedValues).forEach(key => {
+          localStorage.setItem(key, preservedValues[key]);
+        });
+
+        // Set new version
+        localStorage.setItem('crm_cache_version', CACHE_VERSION);
+
+        // Clear IndexedDB
+        try {
+          const databases = await window.indexedDB.databases();
+          for (const db of databases) {
+            if (db.name && !db.name.includes('supabase')) {
+              window.indexedDB.deleteDatabase(db.name);
+            }
+          }
+        } catch (e) {
+          console.warn('IndexedDB cleanup failed:', e);
+        }
+
+        console.log('Cache reset complete. Proceeding with fresh state.');
       }
 
       await fetchInitialData();
