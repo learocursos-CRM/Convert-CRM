@@ -47,9 +47,11 @@ const Deals = () => {
         const term = globalSearch.toLowerCase();
         return stageDeals.filter(d => {
             const lead = getLead(d.leadId);
-            return d.title.toLowerCase().includes(term) ||
-                lead?.name.toLowerCase().includes(term) ||
-                lead?.company.toLowerCase().includes(term);
+            const titleMatch = (d.title ?? "").toLowerCase().includes(term);
+            const leadMatch = (lead?.name ?? "").toLowerCase().includes(term);
+            const companyMatch = (lead?.company ?? "").toLowerCase().includes(term);
+
+            return titleMatch || leadMatch || companyMatch;
         });
     };
 
@@ -413,22 +415,13 @@ const WaitingListView = ({ waitingList, onRestore }: { waitingList: WaitingListI
                                 return (
                                     <tr key={item.id} className="border-b border-gray-100 hover:bg-gray-50">
                                         <td className="p-4">
-                                            <div className="font-medium text-gray-900">{lead?.name || 'Desconhecido'}</div>
+                                            <div className="font-medium text-gray-900">{item.leadName}</div>
+                                            <div className="text-[10px] text-gray-400 font-mono mt-1">{item.leadId}</div>
                                             <div className="text-xs text-gray-500">{lead?.company}</div>
                                         </td>
                                         <td className="p-4">
-                                            <div className="flex flex-col gap-1.5">
-                                                {lead?.phone && (
-                                                    <a href={`tel:${lead.phone}`} className="flex items-center gap-1.5 text-xs text-gray-600 hover:text-indigo-600 font-medium">
-                                                        <Phone size={12} /> {lead.phone}
-                                                    </a>
-                                                )}
-                                                {lead?.email && (
-                                                    <a href={`mailto:${lead.email}`} className="flex items-center gap-1.5 text-xs text-gray-600 hover:text-indigo-600">
-                                                        <Mail size={12} /> {lead.email}
-                                                    </a>
-                                                )}
-                                                {!lead?.phone && !lead?.email && <span className="text-xs text-gray-400">Sem contato</span>}
+                                            <div className="flex flex-col gap-1.5 text-xs text-gray-600">
+                                                {item.leadEmail}
                                             </div>
                                         </td>
                                         <td className="p-4">
@@ -484,7 +477,7 @@ interface KanbanColumnProps {
 }
 
 const KanbanColumn: React.FC<KanbanColumnProps> = ({ stage, deals, getLead, onMove, onWait, onEdit, onDelete, getNextStage, getPrevStage }) => {
-    const totalValue = deals.reduce((acc, d) => acc + d.value, 0);
+    const totalValue = deals.reduce((acc, d) => acc + (Number(d.value) || 0), 0);
 
     const getStageColor = (s: DealStage) => {
         switch (s) {

@@ -61,6 +61,9 @@ export interface Deal {
 export interface WaitingListItem {
   id: string;
   leadId: string;
+  // Joined fields for display
+  leadName?: string;
+  leadEmail?: string;
   course: string;
   reason: string;
   notes?: string;

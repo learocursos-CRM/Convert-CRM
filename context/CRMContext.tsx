@@ -139,7 +139,11 @@ export const CRMProvider = ({ children }: { children?: ReactNode }) => {
         if (profile) {
           setCurrentUser({
             ...profile,
-            mustChangePassword: profile.must_change_password
+            id: profile.id || profile.Id,
+            name: profile.name || profile.Name,
+            email: profile.email || profile.Email,
+            role: profile.role || profile.Role,
+            mustChangePassword: profile.must_change_password || profile.mustChangePassword
           } as User);
         }
       }
@@ -150,27 +154,56 @@ export const CRMProvider = ({ children }: { children?: ReactNode }) => {
       const [leadsRes, dealsRes, waitingRes, activitiesRes, profilesRes] = await Promise.all([
         supabase.from('leads').select('*').order('created_at', { ascending: false }),
         supabase.from('deals').select('*'),
-        supabase.from('waiting_list').select('*'),
+        supabase.from('waiting_list').select('*, leads(name, email, phone), deals(title)'),
         supabase.from('activities').select('*').order('timestamp', { ascending: false }).limit(500),
         supabase.from('profiles').select('*')
       ]);
 
-      console.log('[FETCH] Data received:', {
-        leads: leadsRes.data?.length || 0,
-        deals: dealsRes.data?.length || 0,
-        waiting: waitingRes.data?.length || 0,
-        activities: activitiesRes.data?.length || 0,
-        profiles: profilesRes.data?.length || 0
-      });
+      console.log('[DEBUG] Raw Waiting List Data from Supabase:', waitingRes.data);
+      console.log('[DEBUG] First Lead from Supabase:', leadsRes.data?.[0]);
 
-      if (leadsRes.data) setLeads(leadsRes.data.map(mapLeadFromDB));
-      if (dealsRes.data) setDeals(dealsRes.data.map(mapDealFromDB));
-      if (waitingRes.data) setWaitingList(waitingRes.data.map(mapWaitingListFromDB));
+      if (leadsRes.error) console.error('[FETCH] Error loading leads:', leadsRes.error);
+      if (dealsRes.error) console.error('[FETCH] Error loading deals:', dealsRes.error);
+      if (waitingRes.error) console.error('[FETCH] Error loading waiting_list:', waitingRes.error);
+
+      const mappedLeads = leadsRes.data ? leadsRes.data.map(mapLeadFromDB) : [];
+      const mappedDeals = dealsRes.data ? dealsRes.data.map(mapDealFromDB) : [];
+
+      console.log('[DEBUG] Mapped Leads Count:', mappedLeads.length);
+      if (mappedLeads.length > 0) console.log('[DEBUG] First Mapped Lead ID:', mappedLeads[0].id);
+
+      if (leadsRes.data) setLeads(mappedLeads);
+      if (dealsRes.data) setDeals(mappedDeals);
       if (activitiesRes.data) setActivities(activitiesRes.data as unknown as Activity[]);
-      if (profilesRes.data) setUsers(profilesRes.data.map(p => ({
-        ...p,
-        mustChangePassword: p.must_change_password
-      } as User)));
+
+      if (waitingRes.data) {
+        const mappedWaiting = waitingRes.data.map(w => {
+          try {
+            return mapWaitingListFromDB(w, mappedLeads, mappedDeals);
+          } catch (e) {
+            console.error('[MAP] Error mapping waiting item:', w, e);
+            return null;
+          }
+        }).filter(Boolean) as WaitingListItem[];
+        setWaitingList(mappedWaiting);
+      }
+
+      if (profilesRes.data) setUsers(profilesRes.data.map(p => {
+        try {
+          if (!p) return null;
+          return {
+            ...p,
+            id: p.id ?? p.Id,
+            name: p.name ?? p.Name ?? 'Usuário',
+            email: p.email ?? p.Email,
+            role: p.role ?? p.Role ?? 'viewer',
+            mustChangePassword: p.must_change_password ?? p.mustChangePassword ?? false
+          } as User;
+        } catch (e) {
+          console.error('[MAP] Error mapping profile:', p, e);
+          return null;
+        }
+      }).filter(Boolean) as User[]);
 
       console.log('[FETCH] All data loaded successfully!');
     } catch (error) {
@@ -606,21 +639,91 @@ export const CRMProvider = ({ children }: { children?: ReactNode }) => {
   // const _internalUpdateLeadStatus = Removed
 
   // --- MAPPERS ---
-  const mapLeadFromDB = (db: any): Lead => ({
-    id: db.id, name: db.name, company: db.company, email: db.email, phone: db.phone,
-    source: db.source, classification: db.classification, desiredCourse: db.desired_course,
-    ownerId: db.owner_id, createdAt: db.created_at, lastInteraction: db.last_interaction, lostReason: db.lost_reason
-  });
+  const mapLeadFromDB = (db: any): Lead => {
+    if (!db) return {} as Lead;
+    return {
+      id: db.id ?? db.Id,
+      name: db.name ?? db.Name ?? 'Sem nome',
+      company: db.company ?? db.Company,
+      email: db.email ?? db.Email,
+      phone: db.phone ?? db.Phone,
+      source: db.source ?? db.Source,
+      classification: db.classification ?? db.Classification,
+      desiredCourse: db.desired_course ?? db.Desired_course ?? db.desiredCourse,
+      ownerId: db.owner_id ?? db.ownerId ?? db.Owner_id,
+      createdAt: db.created_at ?? db.createdAt ?? db.Created_at,
+      lastInteraction: db.last_interaction ?? db.lastInteraction,
+      lostReason: db.lost_reason ?? db.lostReason
+    };
+  };
 
-  const mapDealFromDB = (db: any): Deal => ({
-    id: db.id, leadId: db.lead_id, title: db.title, value: db.value, stage: db.stage,
-    probability: db.probability, expectedCloseDate: db.expected_close_date, ownerId: db.owner_id, lossReason: db.loss_reason
-  });
+  const mapDealFromDB = (db: any): Deal => {
+    if (!db) return {} as Deal;
+    return {
+      id: db.id ?? db.Id,
+      leadId: db.lead_id ?? db.Lead_id ?? db.leadId,
+      title: db.title ?? db.Title ?? 'Matrícula',
+      value: db.value ?? db.Value ?? 0,
+      stage: db.stage ?? db.Stage,
+      probability: db.probability ?? db.Probability ?? 10,
+      expectedCloseDate: db.expected_close_date ?? db.expectedCloseDate,
+      ownerId: db.owner_id ?? db.ownerId,
+      lossReason: db.loss_reason ?? db.lossReason
+    };
+  };
 
-  const mapWaitingListFromDB = (db: any): WaitingListItem => ({
-    id: db.id, leadId: db.lead_id, course: db.course, reason: db.reason, notes: db.notes,
-    ownerId: db.owner_id, createdAt: db.created_at, originalDealValue: db.original_deal_value
-  });
+  const mapWaitingListFromDB = (db: any, allLeads?: Lead[], allDeals?: Deal[]): WaitingListItem => {
+    // 1. Extreme Defensive: Try all possible ID variants
+    const lId = db.lead_id || db.Lead_id || db.leadId || db.leadid;
+    const dId = db.deal_id || db.Deal_id || db.dealId || db.dealid;
+
+    // 2. Try to get data from JOIN first (handling both Object and Array formats)
+    const joinLead = db.leads || db.lead || db.Leads;
+    const leadObj = Array.isArray(joinLead) ? joinLead[0] : joinLead;
+
+    const joinDeal = db.deals || db.deal || db.Deals;
+    const dealObj = Array.isArray(joinDeal) ? joinDeal[0] : joinDeal;
+
+    let leadName = leadObj?.name;
+    let leadEmail = leadObj?.email || leadObj?.phone;
+    let course = dealObj?.title || db.course;
+
+    // 3. Fallback to manual lookup in provided arrays if JOIN failed
+    if (!leadName && allLeads && lId) {
+      console.log(`[DEBUG] Mapping Item ${db.id}: Join failed for lead_id ${lId}. Checking mappedLeads...`);
+      const foundLead = allLeads.find(l => {
+        // Log comparison for the first few items to find casing issues
+        return String(l.id).toLowerCase() === String(lId).toLowerCase();
+      });
+      if (foundLead) {
+        console.log(`[DEBUG] Mapping Item ${db.id}: Found Lead in fallback: ${foundLead.name}`);
+        leadName = foundLead.name;
+        leadEmail = foundLead.email || foundLead.phone;
+      } else {
+        console.warn(`[DEBUG] Mapping Item ${db.id}: lead_id ${lId} NOT FOUND in allLeads!`);
+      }
+    }
+
+    if (!course && allDeals && dId) {
+      const foundDeal = allDeals.find(d => d.id === dId);
+      if (foundDeal) {
+        course = foundDeal.title;
+      }
+    }
+
+    return {
+      id: db.id || db.Id,
+      leadId: lId,
+      leadName: leadName || 'Desconhecido',
+      leadEmail: leadEmail || 'Sem contato',
+      course: course || db.course || 'Curso não informado',
+      reason: db.reason,
+      notes: db.notes,
+      ownerId: db.owner_id,
+      createdAt: db.created_at,
+      originalDealValue: db.original_deal_value
+    };
+  };
 
   // --- ACTIONS ---
 
@@ -974,6 +1077,8 @@ export const CRMProvider = ({ children }: { children?: ReactNode }) => {
         .from('waiting_list')
         .insert({
           lead_id: lead.id,
+          deal_id: deal.id,
+          created_by: currentUser.id,
           course: lead.desiredCourse || 'Curso não informado',
           reason: reason,
           notes: notes,
@@ -997,7 +1102,12 @@ export const CRMProvider = ({ children }: { children?: ReactNode }) => {
       }
 
       // 3. Update local state
-      const newItem = mapWaitingListFromDB(wlData);
+      const newItem = {
+        ...mapWaitingListFromDB(wlData),
+        leadName: lead.name,
+        leadEmail: lead.email || lead.phone || 'Sem contato',
+        course: deal.title || lead.desiredCourse || 'Curso não informado'
+      };
       setWaitingList(prev => [newItem, ...prev]);
 
       // Remove deal from local state (it's now closed)
@@ -1028,29 +1138,77 @@ export const CRMProvider = ({ children }: { children?: ReactNode }) => {
     if (currentUser.role !== 'admin' && item.ownerId !== currentUser.id) { alert("Permissão negada."); return; }
 
     try {
-      // 1. Create New Deal
-      const { data: dealData, error: dealError } = await supabase.from('deals').insert({
-        lead_id: lead.id,
-        title: `Matrícula: ${lead.name}`,
-        value: item.originalDealValue || 0,
-        stage: 'Novo Lead / Interesse', // Enum string
-        probability: 10,
-        expected_close_date: new Date(Date.now() + 30 * 86400000).toISOString(),
-        owner_id: item.ownerId
-      }).select().single();
+      // 1. Check if there's an existing deal for this lead in 'waiting_list' stage
+      const { data: existingDeals } = await supabase
+        .from('deals')
+        .select('*')
+        .eq('lead_id', lead.id)
+        .eq('stage', 'waiting_list');
+
+      let dealData;
+      let dealError;
+
+      if (existingDeals && existingDeals.length > 0) {
+        // UPDATE EXISTING DEAL
+        console.log(`[RESTORE] Reopening existing deal ${existingDeals[0].id}`);
+        const { data, error } = await supabase
+          .from('deals')
+          .update({
+            stage: 'Novo Lead / Interesse',
+            closed_at: null,
+            closed_reason: null,
+            owner_id: item.ownerId,
+            value: item.originalDealValue || existingDeals[0].value
+          })
+          .eq('id', existingDeals[0].id)
+          .select()
+          .single();
+        dealData = data;
+        dealError = error;
+      } else {
+        // INSERT NEW DEAL (only if none found)
+        console.log(`[RESTORE] Creating new deal for lead ${lead.id}`);
+        const { data, error } = await supabase
+          .from('deals')
+          .insert({
+            lead_id: lead.id,
+            title: `Matrícula: ${lead.name}`,
+            value: item.originalDealValue || 0,
+            stage: 'Novo Lead / Interesse',
+            probability: 10,
+            expected_close_date: new Date(Date.now() + 30 * 86400000).toISOString(),
+            owner_id: item.ownerId
+          })
+          .select()
+          .single();
+        dealData = data;
+        dealError = error;
+      }
 
       if (dealError) throw dealError;
 
       // 2. Remove from Waiting List
       const { error: wlError } = await supabase.from('waiting_list').delete().eq('id', itemId);
-      if (wlError) throw wlError; // If fails, we have a dangling deal? Transaction would be better.
+      if (wlError) throw wlError;
 
-      const newDeal = mapDealFromDB(dealData);
-      setDeals(prev => [...prev, newDeal]);
+      // 3. Update local state
+      const mappedDeal = mapDealFromDB(dealData);
+      setDeals(prev => {
+        const filtered = prev.filter(d => d.id !== mappedDeal.id);
+        return [...filtered, mappedDeal];
+      });
       setWaitingList(prev => prev.filter(w => w.id !== itemId));
 
-      addActivity({ type: 'status_change', content: `Retomado da Lista de Espera para o Pipeline.`, leadId: lead.id, dealId: newDeal.id, performer: currentUser.name });
+      addActivity({
+        type: 'status_change',
+        content: `Retomado da Lista de Espera para o Pipeline.`,
+        leadId: lead.id,
+        dealId: mappedDeal.id,
+        performer: currentUser.name
+      });
+
     } catch (e: any) {
+      console.error('[RESTORE] Error:', e);
       alert('Erro ao restaurar: ' + e.message);
     }
   };
