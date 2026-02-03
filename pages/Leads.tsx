@@ -201,10 +201,13 @@ const Leads = () => {
                                             <div className="flex items-center"><Mail size={12} className="mr-1 shrink-0" /> <span className="line-clamp-1">{lead.email}</span></div>
                                             <div className="flex items-center"><Phone size={12} className="mr-1 shrink-0" /> <span className="line-clamp-1">{lead.phone}</span></div>
                                         </div>
-                                        <div className="col-span-2 flex items-center">
-                                            <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${pipelineStatus.colorClass}`}>
+                                        <div className="col-span-2 flex flex-col justify-center">
+                                            <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase w-fit ${pipelineStatus.colorClass}`}>
                                                 {pipelineStatus.label}
                                             </span>
+                                            {pipelineStatus.stageChangedAt && (
+                                                <span className="text-[10px] text-gray-400 mt-1">Desde: {new Date(pipelineStatus.stageChangedAt).toLocaleDateString('pt-BR')}</span>
+                                            )}
                                         </div>
                                         <div className="col-span-1 text-xs flex items-center" onClick={e => e.stopPropagation()}>
                                             {isAdmin ? (

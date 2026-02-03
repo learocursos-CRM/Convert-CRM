@@ -56,6 +56,7 @@ export interface Deal {
   expectedCloseDate: string;
   ownerId: string;
   lossReason?: string; // Added specifically for the pipeline rules
+  stageChangedAt?: string; // ISO date - When the stage was last changed
 }
 
 export interface WaitingListItem {

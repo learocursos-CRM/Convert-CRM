@@ -97,9 +97,9 @@ const CRMProxyProvider = ({ children }: { children: ReactNode }) => {
 
   const getLeadPipelineStatus = (lead: Lead) => {
     const isWaiting = waitingCtx.waitingList.some(w => w.leadId === lead.id);
-    if (isWaiting) return { label: 'Em Lista de Espera', colorClass: 'bg-amber-100 text-amber-800 border border-amber-200', isLinked: true };
+    if (isWaiting) return { label: 'Em Lista de Espera', colorClass: 'bg-amber-100 text-amber-800 border border-amber-200', isLinked: true, stageChangedAt: undefined };
     const deal = dealsCtx.deals.find(d => d.leadId === lead.id && d.stage !== DealStage.LOST) || dealsCtx.deals.find(d => d.leadId === lead.id);
-    if (!deal) return { label: 'Incompleto (Sem Negócio)', colorClass: 'bg-gray-100 text-gray-600', isLinked: false };
+    if (!deal) return { label: 'Incompleto (Sem Negócio)', colorClass: 'bg-gray-100 text-gray-600', isLinked: false, stageChangedAt: undefined };
 
     let label = '', colorClass = '';
     switch (deal.stage) {
@@ -111,7 +111,7 @@ const CRMProxyProvider = ({ children }: { children: ReactNode }) => {
       case DealStage.WON: label = 'Convertido'; colorClass = 'bg-green-100 text-green-800 border border-green-200'; break;
       case DealStage.LOST: label = 'Perdido'; colorClass = 'bg-red-50 text-red-700 border border-red-100'; break;
     }
-    return { label, colorClass, isLinked: true, dealId: deal.id };
+    return { label, colorClass, isLinked: true, dealId: deal.id, stageChangedAt: deal.stageChangedAt };
   };
 
   const value: CRMContextType = {

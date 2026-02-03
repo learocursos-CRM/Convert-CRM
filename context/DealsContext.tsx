@@ -41,7 +41,8 @@ export const DealsProvider = ({ children }: { children: ReactNode }) => {
             probability: db.probability ?? db.Probability ?? 10,
             expectedCloseDate: db.expected_close_date ?? db.expectedCloseDate,
             ownerId: db.owner_id ?? db.ownerId,
-            lossReason: db.loss_reason ?? db.lossReason
+            lossReason: db.loss_reason ?? db.lossReason,
+            stageChangedAt: db.stage_changed_at ?? db.stageChangedAt
         };
     };
 
@@ -90,10 +91,14 @@ export const DealsProvider = ({ children }: { children: ReactNode }) => {
         const deal = deals.find(d => d.id === id);
         if (!deal) return;
 
+        const now = new Date().toISOString();
         try {
-            const { error } = await supabase.from('deals').update({ stage: stage }).eq('id', id);
+            const { error } = await supabase.from('deals').update({
+                stage: stage,
+                stage_changed_at: now
+            }).eq('id', id);
             if (error) throw error;
-            setDeals(prev => prev.map(d => d.id === id ? { ...d, stage } : d));
+            setDeals(prev => prev.map(d => d.id === id ? { ...d, stage, stageChangedAt: now } : d));
             addActivity({ type: 'status_change', content: `Negócio avançou para fase: ${stage}`, dealId: id, leadId: deal.leadId, performer: currentUser.name });
         } catch (e: any) {
             alert('Erro ao atualizar estágio: ' + e.message);
