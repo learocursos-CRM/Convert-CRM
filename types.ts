@@ -63,6 +63,7 @@ export interface WaitingListItem {
   leadId: string;
   // Joined fields for display
   leadName?: string;
+  leadPhone?: string;
   leadEmail?: string;
   course: string;
   reason: string;
