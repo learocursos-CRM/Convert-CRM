@@ -44,6 +44,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     useEffect(() => {
         let mounted = true;
 
+        // Failsafe: If execution hangs for 5s, force loading to stop
+        const fallbackTimer = setTimeout(() => {
+            if (mounted) {
+                console.warn('[AUTH] Initialization timed out. Forcing unlock.');
+                setIsLoading(false);
+            }
+        }, 5000);
+
         // 1. Initial Session Check
         const initSession = async () => {
             try {
@@ -71,6 +79,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                 console.error('[AUTH] Init error:', error);
             } finally {
                 if (mounted) {
+                    clearTimeout(fallbackTimer); // Cancel failsafe if success
                     setIsLoading(false);
                     // Load other users in background
                     fetchUsers();
