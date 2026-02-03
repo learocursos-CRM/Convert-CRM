@@ -95,13 +95,29 @@ const ForcePasswordChange = () => {
 
 const App = () => {
     const { isLoading } = useCRM();
+    const [forceSkip, setForceSkip] = useState(false);
 
-    if (isLoading) {
+    useEffect(() => {
+        if (forceSkip) {
+            console.warn('Loading skipped by user');
+        }
+    }, [forceSkip]);
+
+    if (isLoading && !forceSkip) {
         return (
-            <div className="min-h-screen bg-slate-900 flex items-center justify-center">
-                <div className="flex flex-col items-center">
+            <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
+                <div className="flex flex-col items-center max-w-sm text-center">
                     <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-500 mb-4"></div>
-                    <p className="text-gray-400 text-sm">Validando sessão...</p>
+                    <p className="text-gray-400 text-sm mb-6">Validando sessão...</p>
+
+                    {/* Manual Override for stuck states */}
+                    <button
+                        onClick={() => setForceSkip(true)}
+                        className="text-xs text-indigo-400 hover:text-indigo-300 underline cursor-pointer"
+                    >
+                        Demorando muito? Clique aqui para entrar forçadamente.
+                    </button>
+                    <p className="text-[10px] text-gray-600 mt-2">v1.2 - Debug Mode</p>
                 </div>
             </div>
         );
