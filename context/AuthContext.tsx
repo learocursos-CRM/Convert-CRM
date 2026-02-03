@@ -41,49 +41,51 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         }
     };
 
-    const fetchSession = async () => {
-        setIsLoading(true);
-        // Failsafe to ensure we don't hang forever
-        const timeoutId = setTimeout(() => {
-            console.warn('[AUTH] fetchSession timed out, forcing unlock');
-            setIsLoading(false);
-        }, 10000);
+    useEffect(() => {
+        let mounted = true;
 
-        try {
-            const { data: { session } } = await supabase.auth.getSession();
-            if (session?.user) {
-                const { data: profile } = await supabase
-                    .from('profiles')
-                    .select('*')
-                    .eq('id', session.user.id)
-                    .single();
+        // 1. Initial Session Check
+        const initSession = async () => {
+            try {
+                const { data: { session } } = await supabase.auth.getSession();
 
-                if (profile) {
-                    setCurrentUser({
-                        ...profile,
-                        id: profile.id || profile.Id,
-                        name: profile.name || profile.Name,
-                        email: profile.email || profile.Email,
-                        role: profile.role || profile.Role,
-                        mustChangePassword: profile.must_change_password || profile.mustChangePassword
-                    } as User);
+                if (session?.user && mounted) {
+                    // Load profile if we have a session
+                    const { data: profile } = await supabase
+                        .from('profiles')
+                        .select('*')
+                        .eq('id', session.user.id)
+                        .single();
+
+                    if (profile && mounted) {
+                        setCurrentUser({
+                            ...profile,
+                            id: profile.id || profile.Id,
+                            name: profile.name || profile.Name,
+                            email: profile.email || profile.Email,
+                            mustChangePassword: profile.must_change_password
+                        } as User);
+                    }
+                }
+            } catch (error) {
+                console.error('[AUTH] Init error:', error);
+            } finally {
+                if (mounted) {
+                    setIsLoading(false);
+                    // Load other users in background
+                    fetchUsers();
                 }
             }
-            // Non-blocking fetch of other users
-            fetchUsers();
-        } catch (error) {
-            console.error('[AUTH] Critical Error during session fetch:', error);
-        } finally {
-            clearTimeout(timeoutId);
-            setIsLoading(false);
-        }
-    };
+        };
 
-    useEffect(() => {
-        fetchSession();
+        initSession();
 
+        // 2. Auth State Listener
         const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
-            if (event === 'SIGNED_IN' && session?.user) {
+            console.log('[AUTH] Event:', event);
+
+            if (event === 'SIGNED_IN' && session?.user && mounted) {
+                // Refresh profile on sign in
                 const { data: profile } = await supabase.from('profiles').select('*').eq('id', session.user.id).single();
                 if (profile) {
                     setCurrentUser({
@@ -92,13 +94,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                     } as User);
                 }
                 fetchUsers();
-            } else if (event === 'SIGNED_OUT') {
+            } else if (event === 'SIGNED_OUT' && mounted) {
                 setCurrentUser(null);
                 setUsers([]);
             }
         });
 
         return () => {
+            mounted = false;
             authListener.subscription.unsubscribe();
         };
     }, []);
