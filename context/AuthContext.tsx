@@ -41,77 +41,68 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         }
     };
 
-    useEffect(() => {
-        let mounted = true;
+    const loadProfile = async (userId: string): Promise<User | null> => {
+        try {
+            const { data: profile } = await supabase
+                .from('profiles')
+                .select('*')
+                .eq('id', userId)
+                .single();
 
-        // Failsafe: If execution hangs for 5s, force loading to stop
-        const fallbackTimer = setTimeout(() => {
-            if (mounted) {
-                console.warn('[AUTH] Initialization timed out. Forcing unlock.');
+            if (profile) {
+                return {
+                    ...profile,
+                    id: profile.id || profile.Id,
+                    name: profile.name || profile.Name,
+                    email: profile.email || profile.Email,
+                    role: profile.role || profile.Role,
+                    mustChangePassword: profile.must_change_password
+                } as User;
+            }
+        } catch (error) {
+            console.error('[AUTH] Error loading profile:', error);
+        }
+        return null;
+    };
+
+    useEffect(() => {
+        // SIMPLIFIED: Use only onAuthStateChange with a safety timeout
+        let isMounted = true;
+
+        // Safety timeout - ALWAYS unlock after 3 seconds no matter what
+        const safetyTimeout = setTimeout(() => {
+            if (isMounted && isLoading) {
+                console.warn('[AUTH] Safety timeout triggered - forcing unlock');
                 setIsLoading(false);
             }
-        }, 5000);
+        }, 3000);
 
-        // 1. Initial Session Check
-        const initSession = async () => {
-            try {
-                const { data: { session } } = await supabase.auth.getSession();
+        // Listen for auth state changes (handles both initial load and future changes)
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+            console.log('[AUTH] State change:', event);
 
-                if (session?.user && mounted) {
-                    // Load profile if we have a session
-                    const { data: profile } = await supabase
-                        .from('profiles')
-                        .select('*')
-                        .eq('id', session.user.id)
-                        .single();
+            if (!isMounted) return;
 
-                    if (profile && mounted) {
-                        setCurrentUser({
-                            ...profile,
-                            id: profile.id || profile.Id,
-                            name: profile.name || profile.Name,
-                            email: profile.email || profile.Email,
-                            mustChangePassword: profile.must_change_password
-                        } as User);
-                    }
+            if (session?.user) {
+                const profile = await loadProfile(session.user.id);
+                if (profile && isMounted) {
+                    setCurrentUser(profile);
                 }
-            } catch (error) {
-                console.error('[AUTH] Init error:', error);
-            } finally {
-                if (mounted) {
-                    clearTimeout(fallbackTimer); // Cancel failsafe if success
-                    setIsLoading(false);
-                    // Load other users in background
-                    fetchUsers();
-                }
-            }
-        };
-
-        initSession();
-
-        // 2. Auth State Listener
-        const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
-            console.log('[AUTH] Event:', event);
-
-            if (event === 'SIGNED_IN' && session?.user && mounted) {
-                // Refresh profile on sign in
-                const { data: profile } = await supabase.from('profiles').select('*').eq('id', session.user.id).single();
-                if (profile) {
-                    setCurrentUser({
-                        ...profile,
-                        mustChangePassword: profile.must_change_password
-                    } as User);
-                }
-                fetchUsers();
-            } else if (event === 'SIGNED_OUT' && mounted) {
+            } else {
                 setCurrentUser(null);
-                setUsers([]);
+            }
+
+            // Always set loading to false after handling the auth state
+            if (isMounted) {
+                setIsLoading(false);
+                fetchUsers();
             }
         });
 
         return () => {
-            mounted = false;
-            authListener.subscription.unsubscribe();
+            isMounted = false;
+            clearTimeout(safetyTimeout);
+            subscription.unsubscribe();
         };
     }, []);
 
@@ -124,22 +115,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             }
 
             if (data.session?.user) {
-                const { data: profile, error: profileError } = await supabase
-                    .from('profiles')
-                    .select('*')
-                    .eq('id', data.session.user.id)
-                    .single();
-
-                if (profileError || !profile) {
+                const profile = await loadProfile(data.session.user.id);
+                if (!profile) {
                     alert("Login bem-sucedido, mas erro ao carregar perfil. Contate o suporte.");
                     await supabase.auth.signOut();
                     return false;
                 }
-
-                setCurrentUser({
-                    ...profile,
-                    mustChangePassword: profile.must_change_password
-                } as User);
+                setCurrentUser(profile);
             }
             return true;
         } catch (e: any) {
@@ -151,30 +133,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const logout = async () => {
         try {
             await supabase.auth.signOut();
-
             setCurrentUser(null);
             setUsers([]);
 
-            // Cache clearing
-            const supabaseKeys = Object.keys(localStorage).filter(key => key.startsWith('sb-'));
-            const supabaseAuthValues: { [key: string]: string } = {};
-            supabaseKeys.forEach(key => {
-                const value = localStorage.getItem(key);
-                if (value) supabaseAuthValues[key] = value;
-            });
-
+            // Clear storage completely
             localStorage.clear();
-            for (const key in supabaseAuthValues) {
-                localStorage.setItem(key, supabaseAuthValues[key]);
-            }
             sessionStorage.clear();
-
-            try {
-                const databases = await window.indexedDB.databases();
-                databases.forEach(db => { if (db.name) window.indexedDB.deleteDatabase(db.name); });
-            } catch (e) {
-                console.warn('Could not clear IndexedDB:', e);
-            }
 
             window.location.href = '/#/login';
         } catch (error) {
