@@ -12,9 +12,22 @@ import { Lock } from 'lucide-react';
 
 // --- ROUTE GUARD COMPONENT ---
 const ProtectedRoute = ({ children }: { children?: React.ReactNode }) => {
-    const { currentUser } = useCRM();
+    const { currentUser, isLoading } = useCRM();
     const location = useLocation();
 
+    // Wait for auth state to be determined before making redirect decision
+    if (isLoading) {
+        return (
+            <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+                <div className="flex flex-col items-center">
+                    <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600"></div>
+                    <p className="text-gray-500 text-sm mt-3">Carregando...</p>
+                </div>
+            </div>
+        );
+    }
+
+    // Only redirect AFTER we know the auth state
     if (!currentUser) {
         return <Navigate to="/login" replace state={{ from: location }} />;
     }
