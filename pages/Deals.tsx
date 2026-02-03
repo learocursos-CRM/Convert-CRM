@@ -1,6 +1,14 @@
+import React, { useState } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { useCRM } from '../context/CRMContext';
+import { Deal, DealStage } from '../types';
+import { LayoutIcon, List } from 'lucide-react';
+import KanbanColumn from '../components/deals/KanbanColumn';
+import WaitingListView from '../components/deals/WaitingListView';
+import EditDealModal from '../components/modals/EditDealModal';
+import LossReasonModal from '../components/modals/LossReasonModal';
+import MoveToWaitingListModal from '../components/modals/MoveToWaitingListModal';
 import { useDealFilters } from '../hooks/useDealFilters';
-
-// ...
 
 const Deals = () => {
     const {
