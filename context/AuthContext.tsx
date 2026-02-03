@@ -43,6 +43,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     const fetchSession = async () => {
         setIsLoading(true);
+        // Failsafe to ensure we don't hang forever
+        const timeoutId = setTimeout(() => {
+            console.warn('[AUTH] fetchSession timed out, forcing unlock');
+            setIsLoading(false);
+        }, 10000);
+
         try {
             const { data: { session } } = await supabase.auth.getSession();
             if (session?.user) {
@@ -63,10 +69,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                     } as User);
                 }
             }
-            await fetchUsers();
+            // Non-blocking fetch of other users
+            fetchUsers();
         } catch (error) {
             console.error('[AUTH] Critical Error during session fetch:', error);
         } finally {
+            clearTimeout(timeoutId);
             setIsLoading(false);
         }
     };
