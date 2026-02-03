@@ -42,60 +42,109 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     };
 
     const loadProfile = async (userId: string): Promise<User | null> => {
-        try {
-            const { data: profile } = await supabase
-                .from('profiles')
-                .select('*')
-                .eq('id', userId)
-                .single();
+        console.log('[AUTH] loadProfile called for:', userId);
 
-            if (profile) {
-                return {
-                    ...profile,
-                    id: profile.id || profile.Id,
-                    name: profile.name || profile.Name,
-                    email: profile.email || profile.Email,
-                    role: profile.role || profile.Role,
-                    mustChangePassword: profile.must_change_password
-                } as User;
+        // Wrap query in a timeout to prevent indefinite hanging
+        const queryWithTimeout = async (): Promise<User | null> => {
+            try {
+                const { data: profile, error } = await supabase
+                    .from('profiles')
+                    .select('*')
+                    .eq('id', userId)
+                    .single();
+
+                console.log('[AUTH] Profile query completed:', { hasProfile: !!profile, hasError: !!error });
+
+                if (error) {
+                    console.error('[AUTH] Profile query error:', error);
+                    return null;
+                }
+
+                if (profile) {
+                    const user = {
+                        ...profile,
+                        id: profile.id || profile.Id,
+                        name: profile.name || profile.Name,
+                        email: profile.email || profile.Email,
+                        role: profile.role || profile.Role,
+                        mustChangePassword: profile.must_change_password
+                    } as User;
+                    console.log('[AUTH] Returning user:', user.name);
+                    return user;
+                }
+            } catch (error) {
+                console.error('[AUTH] Error loading profile:', error);
             }
-        } catch (error) {
-            console.error('[AUTH] Error loading profile:', error);
-        }
-        return null;
+            return null;
+        };
+
+        // Race between query and timeout
+        const timeoutPromise = new Promise<null>((resolve) => {
+            setTimeout(() => {
+                console.warn('[AUTH] loadProfile timeout - query took too long');
+                resolve(null);
+            }, 5000); // 5 second timeout for profile query
+        });
+
+        return Promise.race([queryWithTimeout(), timeoutPromise]);
     };
 
     useEffect(() => {
-        // SIMPLIFIED: Use only onAuthStateChange with a safety timeout
         let isMounted = true;
+        let isProcessingAuth = false; // Track if we're actively loading a profile
 
-        // Safety timeout - ALWAYS unlock after 3 seconds no matter what
-        const safetyTimeout = setTimeout(() => {
-            if (isMounted && isLoading) {
-                console.warn('[AUTH] Safety timeout triggered - forcing unlock');
-                setIsLoading(false);
+        console.log('[AUTH] Starting initialization');
+
+        // Safety timeout - but only fires if we're NOT actively processing
+        const checkAndUnlock = () => {
+            if (!isMounted) return;
+
+            if (isProcessingAuth) {
+                console.log('[AUTH] Still processing auth, extending timeout...');
+                setTimeout(checkAndUnlock, 2000); // Check again in 2s
+                return;
             }
-        }, 3000);
 
-        // Listen for auth state changes (handles both initial load and future changes)
+            console.warn('[AUTH] Safety timeout - no active auth, forcing unlock');
+            setIsLoading(false);
+        };
+
+        const safetyTimeout = setTimeout(checkAndUnlock, 3000);
+
+        // Listen for auth state changes
         const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-            console.log('[AUTH] State change:', event);
+            console.log('[AUTH] Event:', event);
 
             if (!isMounted) return;
 
             if (session?.user) {
-                const profile = await loadProfile(session.user.id);
-                if (profile && isMounted) {
-                    setCurrentUser(profile);
+                isProcessingAuth = true;
+                console.log('[AUTH] Loading profile...');
+
+                try {
+                    const profile = await loadProfile(session.user.id);
+                    if (profile && isMounted) {
+                        console.log('[AUTH] Profile loaded:', profile.name);
+                        setCurrentUser(profile);
+                    } else {
+                        console.warn('[AUTH] Profile not found');
+                    }
+                } catch (error) {
+                    console.error('[AUTH] Profile load error:', error);
+                } finally {
+                    isProcessingAuth = false;
+                    if (isMounted) {
+                        console.log('[AUTH] Auth complete, unlocking');
+                        setIsLoading(false);
+                        fetchUsers();
+                    }
                 }
             } else {
+                console.log('[AUTH] No session');
                 setCurrentUser(null);
-            }
-
-            // Always set loading to false after handling the auth state
-            if (isMounted) {
-                setIsLoading(false);
-                fetchUsers();
+                if (isMounted) {
+                    setIsLoading(false);
+                }
             }
         });
 
