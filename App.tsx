@@ -94,19 +94,7 @@ const ForcePasswordChange = () => {
 // --- MAIN APP ---
 
 const App = () => {
-    const { isLoading } = useCRM();
-
-    if (isLoading) {
-        return (
-            <div className="min-h-screen bg-slate-900 flex items-center justify-center">
-                <div className="flex flex-col items-center">
-                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-500 mb-4"></div>
-                    <p className="text-gray-400 text-sm">Validando sessão...</p>
-                </div>
-            </div>
-        );
-    }
-
+    // Removed global isLoading check here to allow Router to mount
     return (
         <HashRouter>
             <Routes>
