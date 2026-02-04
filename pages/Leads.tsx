@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useCRM } from '../context/CRMContext';
 import { Lead } from '../types';
 import { Plus, Search, Filter, Phone, Mail, Clock, AlertTriangle, CheckCircle, Edit3, Trash2, Eye, Layers, Archive, UploadCloud } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useLeadFilters } from '../hooks/useLeadFilters';
 // VirtualList removed for build fix
 
@@ -39,8 +39,21 @@ const Leads = () => {
         getSLA: getLeadSLA
     });
 
+    const [searchParams] = useSearchParams();
+
     // ... (keep states)
     const [showModal, setShowModal] = useState(false);
+
+    // Auto-open lead from URL param (Notification click)
+    React.useEffect(() => {
+        const highlightId = searchParams.get('highlight');
+        if (highlightId && leads.length > 0) {
+            const found = leads.find(l => l.id === highlightId);
+            if (found) {
+                setSelectedLead(found);
+            }
+        }
+    }, [searchParams, leads]);
     const [showImportModal, setShowImportModal] = useState(false);
     const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
     const [isEditing, setIsEditing] = useState(false);
