@@ -78,6 +78,11 @@ export const useLeadFilters = ({ leads, getPipelineStatus, getSLA }: UseLeadFilt
         showOnlySLA: false
     });
 
+    const availableCourses = useMemo(() => {
+        const courses = new Set(leads.map(l => l.desiredCourse).filter(c => c && c.trim() !== ''));
+        return Array.from(courses).sort();
+    }, [leads]);
+
     return {
         filteredLeads,
         filters,
@@ -87,6 +92,7 @@ export const useLeadFilters = ({ leads, getPipelineStatus, getSLA }: UseLeadFilt
         toggleSLA,
         setClassification,
         setCourse,
-        clearFilters
+        clearFilters,
+        availableCourses // New export
     };
 };

@@ -30,34 +30,30 @@ const Leads = () => {
         setSearchTerm,
         setStatusFilter,
         setViewMode,
-        toggleSLA
+        toggleSLA,
+        availableCourses, // New
+        setCourse // New
     } = useLeadFilters({
         leads,
         getPipelineStatus: getLeadPipelineStatus,
         getSLA: getLeadSLA
     });
 
-    // Estados de UI
+    // ... (keep states)
     const [showModal, setShowModal] = useState(false);
     const [showImportModal, setShowImportModal] = useState(false);
-    // viewMode, filterStatus, globalSearch REMOVIDOS (gerenciados pelo hook)
-
-    // Estados de Seleção/Edição
     const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
     const [isEditing, setIsEditing] = useState(false);
     const [newNote, setNewNote] = useState('');
 
-
-
-    // Estados de Formulário
+    // Estados de Formulário e Handlers (MANTIDOS)
     const [formData, setFormData] = useState({
         name: '', company: '', email: '', phone: '',
         source: availableSources[0] || '', classification: 'Comunidade', desiredCourse: ''
     });
     const [editData, setEditData] = useState<Partial<Lead>>({});
 
-
-    // Handlers
+    // ... (handlers keep existing logic)
     const handleCreateLead = async (e: React.FormEvent) => {
         e.preventDefault();
         const success = await addLead(formData);
@@ -70,6 +66,7 @@ const Leads = () => {
         }
     };
 
+    // ... (Update, Note, Delete handlers kept as is)
     const handleUpdateLead = async (e: React.FormEvent) => {
         e.preventDefault();
         if (selectedLead) {
@@ -140,6 +137,8 @@ const Leads = () => {
                     <Search size={18} className="text-gray-400 mr-2" />
                     <input type="text" placeholder="Buscar por nome ou empresa" className="bg-transparent border-none outline-none text-sm w-full" value={filters.searchTerm} onChange={e => setSearchTerm(e.target.value)} />
                 </div>
+
+                {/* Filtro de Status */}
                 <div className="flex items-center gap-2">
                     <Filter size={18} className="text-gray-500" />
                     <select className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500" value={filters.status} onChange={e => setStatusFilter(e.target.value)}>
@@ -160,6 +159,18 @@ const Leads = () => {
                         )}
                     </select>
                 </div>
+
+                {/* Novo Filtro de Curso */}
+                <div className="flex items-center gap-2 border-l border-gray-300 pl-4">
+                    <span className="text-sm text-gray-500 font-medium">Curso:</span>
+                    <select className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500 max-w-[200px]" value={filters.course} onChange={e => setCourse(e.target.value)}>
+                        <option value="">Todos os Cursos</option>
+                        {availableCourses.map(course => (
+                            <option key={course} value={course}>{course}</option>
+                        ))}
+                    </select>
+                </div>
+
                 {filters.viewMode === 'queue' && (
                     <button onClick={toggleSLA} className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${filters.showOnlySLA ? 'bg-red-50 border-red-200 text-red-700' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
                         <AlertTriangle size={16} className={filters.showOnlySLA ? 'text-red-600' : 'text-gray-400'} />
@@ -167,10 +178,6 @@ const Leads = () => {
                     </button>
                 )}
             </div>
-
-            {/* VirtualList import removed */}
-
-            // ...
 
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col h-[calc(100vh-280px)]">
                 {/* Header */}
@@ -195,6 +202,11 @@ const Leads = () => {
                                         <div className="col-span-3">
                                             <p className="font-medium text-gray-900 line-clamp-1">{lead.name}</p>
                                             <p className="text-xs text-gray-500 line-clamp-1">{lead.company}</p>
+                                            {lead.desiredCourse && (
+                                                <p className="text-[10px] text-indigo-600 font-medium bg-indigo-50 px-1.5 py-0.5 rounded w-fit mt-1 line-clamp-1">
+                                                    {lead.desiredCourse}
+                                                </p>
+                                            )}
                                         </div>
                                         <div className="col-span-2 flex flex-col justify-center">
                                             <span className={`text-xs font-bold px-2 py-0.5 rounded w-fit ${sla.status === 'overdue' ? 'bg-red-100 text-red-700' : sla.status === 'warning' ? 'bg-yellow-100 text-yellow-800' : sla.status === 'handled' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
