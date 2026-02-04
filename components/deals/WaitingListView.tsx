@@ -35,11 +35,11 @@ const WaitingListView: React.FC<WaitingListViewProps> = ({ waitingList, onRestor
         if (selectedCourse !== 'ALL') doc.text(`Filtro de Curso: ${selectedCourse}`, 14, 36);
 
         const tableBody = filteredList.map(item => {
-            const lead = getLead(item.leadId);
+            // Using data directly from the item (populated via expand/join in context)
             return [
-                lead?.name || 'N/A',
-                lead?.phone || '-',
-                lead?.email || '-',
+                item.leadName || 'N/A',
+                item.leadPhone || '-',
+                item.leadEmail || '-',
                 item.course,
                 item.reason,
                 new Date(item.createdAt).toLocaleDateString()

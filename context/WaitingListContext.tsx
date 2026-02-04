@@ -28,19 +28,19 @@ export const WaitingListProvider = ({ children }: { children: ReactNode }) => {
 
     const mapWaitingListFromDB = (db: any, allLeads: Lead[], allDeals: Deal[]): WaitingListItem => {
         const lId = db.lead_id || db.Lead_id || db.leadId;
-        const dId = db.deal_id || db.Deal_id || db.dealId;
 
-        const lead = allLeads.find(l => String(l.id).toLowerCase() === String(lId).toLowerCase());
-        const deal = allDeals.find(d => String(d.id).toLowerCase() === String(dId).toLowerCase());
+        // Prioritize JOINED lead data, fallback to context cache
+        const dbLead = db.leads;
+        const memoryLead = allLeads.find(l => String(l.id).toLowerCase() === String(lId).toLowerCase());
 
         return {
             id: db.id || db.Id,
             leadId: lId,
-            leadName: lead?.name || 'Desconhecido',
-            leadPhone: lead?.phone,
-            leadEmail: lead?.email,
-            // FIX: If db.course contains "Matrícula:" (bad snapshot), fallback to lead.desiredCourse
-            course: (db.course && !db.course.startsWith('Matrícula:')) ? db.course : (lead?.desiredCourse || 'Curso não informado'),
+            leadName: dbLead?.name || memoryLead?.name || 'Desconhecido',
+            leadPhone: dbLead?.phone || memoryLead?.phone,
+            leadEmail: dbLead?.email || memoryLead?.email,
+            // Regra: Curso deve vir do Lead (dbLead.desired_course)
+            course: dbLead?.desired_course || memoryLead?.desiredCourse || (db.course && !db.course.startsWith('Matrícula:') ? db.course : 'Curso não informado'),
             reason: db.reason,
             notes: db.notes,
             ownerId: db.owner_id,
@@ -51,7 +51,11 @@ export const WaitingListProvider = ({ children }: { children: ReactNode }) => {
 
     const refreshWaitingList = async () => {
         try {
-            const { data } = await supabase.from('waiting_list').select('*');
+            // Join with leads table to ensure we have contact info for PDF even if lead isn't in current context memory
+            const { data } = await supabase
+                .from('waiting_list')
+                .select('*, leads (name, phone, email, desired_course)');
+
             if (data) {
                 setWaitingList(data.map(w => mapWaitingListFromDB(w, leads, deals)));
             }
