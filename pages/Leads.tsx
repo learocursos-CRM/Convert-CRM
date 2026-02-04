@@ -10,8 +10,9 @@ import { useLeadFilters } from '../hooks/useLeadFilters';
 import NewLeadModal from '../components/modals/NewLeadModal';
 import LeadDetailsModal from '../components/modals/LeadDetailsModal';
 import ImportWizard from '../components/modals/ImportWizard';
-import { FixedSizeList } from 'react-window';
-import { AutoSizer } from 'react-virtualized-auto-sizer';
+// Virtualization imports removed for build stability
+
+
 
 const Leads = () => {
     const navigate = useNavigate();
@@ -45,6 +46,8 @@ const Leads = () => {
     const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
     const [isEditing, setIsEditing] = useState(false);
     const [newNote, setNewNote] = useState('');
+
+
 
     // Estados de Formulário
     const [formData, setFormData] = useState({
@@ -181,75 +184,61 @@ const Leads = () => {
                 </div>
 
                 {/* Body */}
-                <div className="flex-1 bg-white">
-                    <div className="flex-1 overflow-hidden" style={{ minHeight: 0 }}>
-                        {filteredLeads.length > 0 ? (
-                            <AutoSizer>
-                                {({ height, width }) => (
-                                    <FixedSizeList
-                                        height={height}
-                                        width={width}
-                                        itemCount={filteredLeads.length}
-                                        itemSize={80} // Ajustado para altura do card
-                                    >
-                                        {({ index, style }) => {
-                                            const lead = filteredLeads[index];
-                                            const sla = getLeadSLA(lead);
-                                            const pipelineStatus = getLeadPipelineStatus(lead);
-                                            return (
-                                                <div style={style}>
-                                                    <div className="grid grid-cols-12 gap-4 border-b border-gray-100 hover:bg-gray-50 transition cursor-pointer items-center p-4 h-[80px]" onClick={() => setSelectedLead(lead)}>
-                                                        <div className="col-span-3">
-                                                            <p className="font-medium text-gray-900 line-clamp-1">{lead.name}</p>
-                                                            <p className="text-xs text-gray-500 line-clamp-1">{lead.company}</p>
-                                                        </div>
-                                                        <div className="col-span-2 flex flex-col justify-center">
-                                                            <span className={`text-xs font-bold px-2 py-0.5 rounded w-fit ${sla.status === 'overdue' ? 'bg-red-100 text-red-700' : sla.status === 'warning' ? 'bg-yellow-100 text-yellow-800' : sla.status === 'handled' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
-                                                                {sla.label}
-                                                            </span>
-                                                            <span className="text-[10px] text-gray-400 mt-1">Desde: {new Date(lead.createdAt).toLocaleDateString()}</span>
-                                                        </div>
-                                                        <div className="col-span-3 flex flex-col gap-1 text-xs text-gray-600 justify-center">
-                                                            <div className="flex items-center"><Mail size={12} className="mr-1 shrink-0" /> <span className="line-clamp-1">{lead.email}</span></div>
-                                                            <div className="flex items-center"><Phone size={12} className="mr-1 shrink-0" /> <span className="line-clamp-1">{lead.phone}</span></div>
-                                                        </div>
-                                                        <div className="col-span-2 flex flex-col justify-center">
-                                                            <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase w-fit ${pipelineStatus.colorClass}`}>
-                                                                {pipelineStatus.label}
-                                                            </span>
-                                                            {pipelineStatus.stageChangedAt && (
-                                                                <span className="text-[10px] text-gray-400 mt-1">Desde: {new Date(pipelineStatus.stageChangedAt).toLocaleDateString('pt-BR')}</span>
-                                                            )}
-                                                        </div>
-                                                        <div className="col-span-1 text-xs flex items-center" onClick={e => e.stopPropagation()}>
-                                                            {isAdmin ? (
-                                                                <select value={lead.ownerId || ""} onChange={(e) => assignLead(lead.id, e.target.value)} className="border-none bg-gray-50 rounded px-1 py-1 outline-none text-gray-700 font-medium w-full">
-                                                                    <option value="" disabled>...</option>
-                                                                    {users.map(u => <option key={u.id} value={u.id}>{u.name.split(' ')[0]}</option>)}
-                                                                </select>
-                                                            ) : (
-                                                                <span className="text-gray-700 truncate">{users.find(u => u.id === lead.ownerId)?.name.split(' ')[0] || '-'}</span>
-                                                            )}
-                                                        </div>
-                                                        <div className="col-span-1 flex items-center justify-end gap-1 text-gray-400" onClick={e => e.stopPropagation()}>
-                                                            <button onClick={() => setSelectedLead(lead)} className="hover:text-indigo-600 p-1"><Eye size={16} /></button>
-                                                            <button onClick={() => startEditing(lead)} className="hover:text-blue-600 p-1"><Edit3 size={16} /></button>
-                                                            {isAdmin && <button onClick={(e) => handleDeleteLead(lead.id, lead.name, e)} className="hover:text-red-600 p-1"><Trash2 size={16} /></button>}
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            );
-                                        }}
-                                    </FixedSizeList>
-                                )}
-                            </AutoSizer>
-                        ) : (
-                            <div className="flex flex-col items-center justify-center h-full text-gray-400 p-12">
-                                <Search size={48} className="mb-2 opacity-20" />
-                                <p>Nenhum lead encontrado com estes filtros.</p>
-                            </div>
-                        )}
-                    </div>
+                <div className="flex-1 bg-white overflow-y-auto">
+                    {filteredLeads.length > 0 ? (
+                        <div>
+                            {filteredLeads.map((lead) => {
+                                const sla = getLeadSLA(lead);
+                                const pipelineStatus = getLeadPipelineStatus(lead);
+                                return (
+                                    <div key={lead.id} className="grid grid-cols-12 gap-4 border-b border-gray-100 hover:bg-gray-50 transition cursor-pointer items-center p-4 h-[80px]" onClick={() => setSelectedLead(lead)}>
+                                        <div className="col-span-3">
+                                            <p className="font-medium text-gray-900 line-clamp-1">{lead.name}</p>
+                                            <p className="text-xs text-gray-500 line-clamp-1">{lead.company}</p>
+                                        </div>
+                                        <div className="col-span-2 flex flex-col justify-center">
+                                            <span className={`text-xs font-bold px-2 py-0.5 rounded w-fit ${sla.status === 'overdue' ? 'bg-red-100 text-red-700' : sla.status === 'warning' ? 'bg-yellow-100 text-yellow-800' : sla.status === 'handled' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
+                                                {sla.label}
+                                            </span>
+                                            <span className="text-[10px] text-gray-400 mt-1">Desde: {new Date(lead.createdAt).toLocaleDateString()}</span>
+                                        </div>
+                                        <div className="col-span-3 flex flex-col gap-1 text-xs text-gray-600 justify-center">
+                                            <div className="flex items-center"><Mail size={12} className="mr-1 shrink-0" /> <span className="line-clamp-1">{lead.email}</span></div>
+                                            <div className="flex items-center"><Phone size={12} className="mr-1 shrink-0" /> <span className="line-clamp-1">{lead.phone}</span></div>
+                                        </div>
+                                        <div className="col-span-2 flex flex-col justify-center">
+                                            <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase w-fit ${pipelineStatus.colorClass}`}>
+                                                {pipelineStatus.label}
+                                            </span>
+                                            {pipelineStatus.stageChangedAt && (
+                                                <span className="text-[10px] text-gray-400 mt-1">Desde: {new Date(pipelineStatus.stageChangedAt).toLocaleDateString('pt-BR')}</span>
+                                            )}
+                                        </div>
+                                        <div className="col-span-1 text-xs flex items-center" onClick={e => e.stopPropagation()}>
+                                            {isAdmin ? (
+                                                <select value={lead.ownerId || ""} onChange={(e) => assignLead(lead.id, e.target.value)} className="border-none bg-gray-50 rounded px-1 py-1 outline-none text-gray-700 font-medium w-full">
+                                                    <option value="" disabled>...</option>
+                                                    {users.map(u => <option key={u.id} value={u.id}>{u.name.split(' ')[0]}</option>)}
+                                                </select>
+                                            ) : (
+                                                <span className="text-gray-700 truncate">{users.find(u => u.id === lead.ownerId)?.name.split(' ')[0] || '-'}</span>
+                                            )}
+                                        </div>
+                                        <div className="col-span-1 flex items-center justify-end gap-1 text-gray-400" onClick={e => e.stopPropagation()}>
+                                            <button onClick={() => setSelectedLead(lead)} className="hover:text-indigo-600 p-1"><Eye size={16} /></button>
+                                            <button onClick={() => startEditing(lead)} className="hover:text-blue-600 p-1"><Edit3 size={16} /></button>
+                                            {isAdmin && <button onClick={(e) => handleDeleteLead(lead.id, lead.name, e)} className="hover:text-red-600 p-1"><Trash2 size={16} /></button>}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    ) : (
+                        <div className="flex flex-col items-center justify-center h-full text-gray-400 p-12">
+                            <Search size={48} className="mb-2 opacity-20" />
+                            <p>Nenhum lead encontrado com estes filtros.</p>
+                        </div>
+                    )}
                 </div>
             </div>
 
