@@ -8,7 +8,7 @@ interface DealsContextType {
     deals: Deal[];
     availableSources: string[];
     lossReasons: string[];
-    addDeal: (deal: Omit<Deal, 'id'>) => Promise<void>;
+    addDeal: (deal: Omit<Deal, 'id'>) => Promise<boolean>;
     updateDealStage: (id: string, stage: DealStage) => Promise<void>;
     updateDeal: (id: string, data: Partial<Deal>) => Promise<void>;
     deleteDeal: (id: string) => Promise<void>;
@@ -63,8 +63,8 @@ export const DealsProvider = ({ children }: { children: ReactNode }) => {
         }
     }, [currentUser]);
 
-    const addDeal = async (dealData: Omit<Deal, 'id'>) => {
-        if (!currentUser) return;
+    const addDeal = async (dealData: Omit<Deal, 'id'>): Promise<boolean> => {
+        if (!currentUser) return false;
         try {
             const { data, error } = await supabase.from('deals').insert({
                 lead_id: dealData.leadId,
@@ -81,8 +81,10 @@ export const DealsProvider = ({ children }: { children: ReactNode }) => {
             const newDeal = mapDealFromDB(data);
             setDeals(prev => [...prev, newDeal]);
             addActivity({ type: 'status_change', content: `Negócio criado: ${newDeal.title}`, leadId: newDeal.leadId, dealId: newDeal.id, performer: currentUser.name });
+            return true;
         } catch (e: any) {
             alert('Erro ao criar negócio: ' + e.message);
+            return false;
         }
     };
 

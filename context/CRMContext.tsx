@@ -138,7 +138,29 @@ const CRMProxyProvider = ({ children }: { children: ReactNode }) => {
     updateMyProfile: auth.updateMyProfile,
     adminResetPassword: auth.adminResetPassword,
 
-    addLead: leadsCtx.addLead,
+    addLead: async (leadData) => {
+      const newLead = await leadsCtx.addLead(leadData);
+      if (newLead) {
+        const dealSuccess = await dealsCtx.addDeal({
+          leadId: newLead.id,
+          title: 'Oportunidade: ' + newLead.name,
+          value: 0,
+          stage: DealStage.NEW,
+          probability: 10,
+          ownerId: newLead.ownerId || auth.currentUser?.id || '',
+          lossReason: '',
+          expectedCloseDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+        });
+        if (!dealSuccess) {
+          // TODO: Consider rolling back lead creation here if strict atomicity is required by DB constraints, 
+          // but for now we warn and return false so UI doesn't clear form blindly.
+          alert("Atenção: O Lead foi salvo, mas houve erro ao criar o Negócio. Verifique o Pipeline.");
+          return false;
+        }
+        return true;
+      }
+      return false;
+    },
     bulkAddLeads: async (leads) => { for (const l of leads) await leadsCtx.addLead(l); },
     updateLeadData: leadsCtx.updateLeadData,
     assignLead: (lId, uId) => leadsCtx.assignLead(lId, uId, dealsCtx.deals.filter(d => d.leadId === lId)),

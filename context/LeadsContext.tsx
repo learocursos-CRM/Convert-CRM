@@ -15,11 +15,11 @@ interface LeadsContextType {
     leads: Lead[];
     allLeads: Lead[];
     activities: Activity[];
-    addLead: (lead: Omit<Lead, 'id' | 'createdAt'>) => Promise<boolean>;
+    addLead: (lead: Omit<Lead, 'id' | 'createdAt'>) => Promise<Lead | null>;
     updateLeadData: (id: string, data: Partial<Lead>) => Promise<void>;
     assignLead: (leadId: string, userId: string, activeDeals: { id: string, stage: DealStage }[]) => Promise<void>;
     deleteLead: (id: string) => Promise<void>;
-    addActivity: (activity: Omit<Activity, 'id' | 'timestamp'>) => Promise<void>;
+    addActivity: (activity: Omit<Activity, 'id' | 'timestamp'>) => Promise<boolean>;
     getLeadActivities: (leadId: string) => Activity[];
     getLeadSLA: (lead: Lead, deals: { leadId: string, stage: DealStage }[], waitingList: { leadId: string }[]) => SLAData;
     normalizeClassification: (input: string) => string | null;
@@ -91,10 +91,10 @@ export const LeadsProvider = ({ children }: { children: ReactNode }) => {
         return null;
     };
 
-    const addLead = async (leadData: Omit<Lead, 'id' | 'createdAt'>): Promise<boolean> => {
-        if (!currentUser) return false;
+    const addLead = async (leadData: Omit<Lead, 'id' | 'createdAt'>): Promise<Lead | null> => {
+        if (!currentUser) return null;
         const safeClassification = normalizeClassification(leadData.classification || '');
-        if (!safeClassification) { alert("Erro de Validação: Classificação inválida."); return false; }
+        if (!safeClassification) { alert("Erro de Validação: Classificação inválida."); return null; }
 
         try {
             const { data, error } = await supabase.from('leads').insert({
@@ -112,10 +112,10 @@ export const LeadsProvider = ({ children }: { children: ReactNode }) => {
             const newLead = mapLeadFromDB(data);
             setLeads(prev => [newLead, ...prev]);
             await addActivity({ type: 'status_change', content: 'Lead criado no sistema', leadId: newLead.id, performer: currentUser.name });
-            return true;
+            return newLead;
         } catch (e: any) {
             alert('Erro ao salvar lead: ' + e.message);
-            return false;
+            return null;
         }
     };
 
@@ -178,7 +178,7 @@ export const LeadsProvider = ({ children }: { children: ReactNode }) => {
         }
     };
 
-    const addActivity = async (activity: Omit<Activity, 'id' | 'timestamp'>) => {
+    const addActivity = async (activity: Omit<Activity, 'id' | 'timestamp'>): Promise<boolean> => {
         try {
             const { data, error } = await supabase.from('activities').insert({
                 lead_id: activity.leadId,
@@ -199,8 +199,14 @@ export const LeadsProvider = ({ children }: { children: ReactNode }) => {
                 };
                 setActivities(prev => [newActivity, ...prev]);
                 if (activity.leadId) setLeads(prev => prev.map(l => l.id === activity.leadId ? { ...l, lastInteraction: data.timestamp } : l));
+                return true;
             }
-        } catch (e) { console.error(e); }
+            if (error) throw error;
+            return false;
+        } catch (e) {
+            console.error(e);
+            return false;
+        }
     };
 
     const getLeadActivities = (leadId: string) => {

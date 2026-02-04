@@ -1,5 +1,6 @@
 import React from 'react';
 import { X, Edit3, Lock, Briefcase, ArrowRight, Clock, MessageSquare } from 'lucide-react';
+import { supabase } from '../../services/supabase';
 import { Lead, Activity } from '../../types';
 
 interface LeadDetailsModalProps {
@@ -16,7 +17,7 @@ interface LeadDetailsModalProps {
     activities: Activity[];
     newNote: string;
     setNewNote: (val: string) => void;
-    onAddNote: () => void;
+    onAddNote: () => Promise<boolean>;
     onNavigateToDeals: () => void;
     getClassificationColor: (c?: string) => string;
 }
@@ -26,6 +27,57 @@ const LeadDetailsModal = ({
     isAdmin, availableSources, pipelineStatus, activities, newNote, setNewNote,
     onAddNote, onNavigateToDeals, getClassificationColor
 }: LeadDetailsModalProps) => {
+    const [localActivities, setLocalActivities] = React.useState<Activity[]>([]);
+    const [isLoadingActivities, setIsLoadingActivities] = React.useState(false);
+
+    React.useEffect(() => {
+        if (lead) {
+            setIsLoadingActivities(true);
+            supabase.from('activities')
+                .select('*')
+                .eq('lead_id', lead.id)
+                .order('timestamp', { ascending: false })
+                .then(({ data }) => {
+                    if (data) setLocalActivities(data as any);
+                    setIsLoadingActivities(false);
+                });
+        }
+    }, [lead]);
+
+    const handleAddNoteLocal = async () => {
+        if (!lead || !newNote.trim()) return;
+
+        // Optimistic update
+        const tempActivity: any = {
+            id: 'temp-' + Date.now(),
+            leadId: lead.id,
+            content: newNote,
+            type: 'note',
+            performer: 'Você',
+            timestamp: new Date().toISOString()
+        };
+        setLocalActivities(prev => [tempActivity, ...prev]);
+
+        // Call parent handler (which saves to DB)
+        const success = await onAddNote();
+
+        if (!success) {
+            // Rollback optimistic update on failure
+            setLocalActivities(prev => prev.filter(a => a.id !== tempActivity.id));
+            alert("Erro ao salvar atividade. Tente novamente.");
+            return;
+        }
+
+        // Re-fetch to ensure sync (optional but safer)
+        supabase.from('activities')
+            .select('*')
+            .eq('lead_id', lead.id)
+            .order('timestamp', { ascending: false })
+            .then(({ data }) => {
+                if (data) setLocalActivities(data as any);
+            });
+    };
+
     if (!lead) return null;
 
     return (
@@ -218,16 +270,19 @@ const LeadDetailsModal = ({
                                     <Clock size={16} /> Histórico (Atividades)
                                 </h4>
                                 <div className="flex-1 overflow-y-auto mb-4 space-y-3 custom-scrollbar pr-2 max-h-48">
-                                    {activities.map(act => (
-                                        <div key={act.id} className="text-xs bg-white p-2 rounded border border-gray-100 shadow-sm">
-                                            <p className="font-bold text-gray-700 mb-0.5">{act.performer}</p>
-                                            <p className="text-gray-600 mb-1">{act.content}</p>
-                                            <p className="text-[10px] text-gray-400 text-right">
-                                                {new Date(act.timestamp).toLocaleDateString()} {new Date(act.timestamp).toLocaleTimeString()}
-                                            </p>
-                                        </div>
-                                    ))}
-                                    {activities.length === 0 && (
+                                    {isLoadingActivities ? (
+                                        <p className="text-xs text-center text-gray-500 py-4">Carregando histórico...</p>
+                                    ) : localActivities.length > 0 ? (
+                                        localActivities.map(act => (
+                                            <div key={act.id} className="text-xs bg-white p-2 rounded border border-gray-100 shadow-sm">
+                                                <p className="font-bold text-gray-700 mb-0.5">{act.performer}</p>
+                                                <p className="text-gray-600 mb-1">{act.content}</p>
+                                                <p className="text-[10px] text-gray-400 text-right">
+                                                    {new Date(act.timestamp).toLocaleDateString()} {new Date(act.timestamp).toLocaleTimeString()}
+                                                </p>
+                                            </div>
+                                        ))
+                                    ) : (
                                         <p className="text-xs text-gray-400 italic text-center">Nenhuma atividade registrada.</p>
                                     )}
                                 </div>
@@ -242,7 +297,7 @@ const LeadDetailsModal = ({
                                             onChange={(e) => setNewNote(e.target.value)}
                                         />
                                         <button
-                                            onClick={onAddNote}
+                                            onClick={handleAddNoteLocal}
                                             className="bg-indigo-600 text-white p-1.5 rounded hover:bg-indigo-700"
                                             title="Salvar Nota"
                                         >
