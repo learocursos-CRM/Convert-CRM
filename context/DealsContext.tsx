@@ -56,11 +56,32 @@ export const DealsProvider = ({ children }: { children: ReactNode }) => {
     };
 
     useEffect(() => {
-        if (currentUser) {
-            refreshDeals();
-        } else {
+        if (!currentUser) {
             setDeals([]);
+            return;
         }
+
+        refreshDeals();
+
+        // Realtime Subscription (INSERT only)
+        const channel = supabase
+            .channel('deals-changes')
+            .on(
+                'postgres_changes',
+                { event: 'INSERT', schema: 'public', table: 'deals' },
+                (payload) => {
+                    const newDeal = mapDealFromDB(payload.new);
+                    setDeals(prev => {
+                        if (prev.some(d => d.id === newDeal.id)) return prev;
+                        return [...prev, newDeal];
+                    });
+                }
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
     }, [currentUser]);
 
     const addDeal = async (dealData: Omit<Deal, 'id'>): Promise<boolean> => {

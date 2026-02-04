@@ -5,7 +5,7 @@ import { Lead } from '../../types';
 
 interface ImportWizardProps {
     onClose: () => void;
-    onImport: (data: any[]) => void;
+    onImport: (data: any[], onProgress?: (current: number, total: number) => void) => void | Promise<void>;
     availableSources: string[];
     currentUser: any;
     leads: Lead[];
@@ -140,9 +140,28 @@ const ImportWizard = ({
         setStep(3);
     };
 
-    const handleConfirm = () => {
-        onImport(previewData);
-        onClose();
+    const [isImporting, setIsImporting] = useState(false);
+    const [progress, setProgress] = useState({ current: 0, total: 0 });
+
+    const handleConfirm = async () => {
+        setIsImporting(true);
+        try {
+            // @ts-ignore - onImport signature mismatch in props vs implementation temporarily
+            if (onImport.length > 1) {
+                await onImport(previewData, (current, total) => {
+                    setProgress({ current, total });
+                });
+            } else {
+                // Fallback for generic import if not supporting progress
+                await onImport(previewData);
+            }
+            onClose();
+        } catch (error) {
+            console.error(error);
+            alert("Erro na importação.");
+        } finally {
+            setIsImporting(false);
+        }
     };
 
     return (
@@ -240,7 +259,27 @@ const ImportWizard = ({
                         {step > 1 ? 'Voltar' : 'Cancelar'}
                     </button>
                     {step === 2 && <button onClick={processData} className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm font-medium flex items-center gap-2">Validar Dados <ArrowRight size={16} /></button>}
-                    {step === 3 && <button onClick={handleConfirm} disabled={previewData.length === 0} className={`px-6 py-2 rounded-lg text-sm font-medium flex items-center gap-2 ${previewData.length > 0 ? 'bg-green-600 text-white hover:bg-green-700' : 'bg-gray-200 text-gray-400 font-medium'}`}><CheckCircle size={16} /> Confirmar Importação</button>}
+                    {step === 3 && (
+                        isImporting ? (
+                            <div className="w-full flex flex-col gap-2">
+                                <div className="flex justify-between text-xs text-gray-500 font-medium">
+                                    <span>Processando importação...</span>
+                                    <span>{Math.round((progress.current / (progress.total || 1)) * 100)}%</span>
+                                </div>
+                                <div className="w-full bg-gray-200 rounded-full h-2.5 overflow-hidden">
+                                    <div
+                                        className="bg-indigo-600 h-2.5 rounded-full transition-all duration-300 ease-out"
+                                        style={{ width: `${(progress.current / (progress.total || 1)) * 100}%` }}
+                                    ></div>
+                                </div>
+                                <p className="text-[10px] text-center text-gray-400 mt-1">
+                                    Criando Lead {progress.current} de {progress.total}... Gerando Negócio no Pipeline...
+                                </p>
+                            </div>
+                        ) : (
+                            <button onClick={handleConfirm} disabled={previewData.length === 0} className={`px-6 py-2 rounded-lg text-sm font-medium flex items-center gap-2 ${previewData.length > 0 ? 'bg-green-600 text-white hover:bg-green-700' : 'bg-gray-200 text-gray-400 font-medium'}`}><CheckCircle size={16} /> Confirmar Importação</button>
+                        )
+                    )}
                 </div>
             </div>
         </div>

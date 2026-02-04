@@ -30,12 +30,12 @@ interface CRMContextType {
   adminResetPassword: (userId: string, newPassword: string) => void;
 
   addLead: (lead: Omit<Lead, 'id' | 'createdAt'>) => Promise<boolean>;
-  bulkAddLeads: (leads: Omit<Lead, 'id' | 'createdAt'>[]) => Promise<void>;
+  bulkAddLeads: (leads: Omit<Lead, 'id' | 'createdAt'>[], onProgress?: (current: number, total: number) => void) => Promise<void>;
   updateLeadData: (id: string, data: Partial<Lead>) => Promise<void>;
   assignLead: (leadId: string, userId: string) => Promise<void>;
   deleteLead: (id: string) => Promise<void>;
 
-  addDeal: (deal: Omit<Deal, 'id'>) => Promise<void>;
+  addDeal: (deal: Omit<Deal, 'id'>) => Promise<boolean>;
   updateDealStage: (id: string, stage: DealStage) => Promise<void>;
   updateDeal: (id: string, data: Partial<Deal>) => Promise<void>;
   deleteDeal: (id: string) => Promise<void>;
@@ -44,7 +44,7 @@ interface CRMContextType {
   restoreFromWaitingList: (itemId: string) => Promise<void>;
   updateWaitingListItem: (id: string, data: Partial<WaitingListItem>) => Promise<void>;
 
-  addActivity: (activity: Omit<Activity, 'id' | 'timestamp'>) => Promise<void>;
+  addActivity: (activity: Omit<Activity, 'id' | 'timestamp'>) => Promise<boolean>;
   getLeadActivities: (leadId: string) => Activity[];
 
   // Helpers
@@ -114,6 +114,31 @@ const CRMProxyProvider = ({ children }: { children: ReactNode }) => {
     return { label, colorClass, isLinked: true, dealId: deal.id, stageChangedAt: deal.stageChangedAt };
   };
 
+  const createLeadWithDeal = async (leadData: Omit<Lead, 'id' | 'createdAt'>): Promise<boolean> => {
+    const newLead = await leadsCtx.addLead(leadData);
+    if (newLead) {
+      // Automatically create a Deal for the new Lead
+      const dealSuccess = await dealsCtx.addDeal({
+        leadId: newLead.id,
+        title: 'Oportunidade: ' + newLead.name,
+        value: 0,
+        stage: DealStage.NEW,
+        probability: 10,
+        ownerId: newLead.ownerId || auth.currentUser?.id || '',
+        lossReason: '',
+        expectedCloseDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+      });
+
+      if (!dealSuccess) {
+        console.error("Failed to create deal for lead:", newLead.id);
+        // We don't alert here during bulk to avoid spamming alerts, rely on return value or logs
+        return false;
+      }
+      return true;
+    }
+    return false;
+  };
+
   const value: CRMContextType = {
     // States
     allLeads: leadsCtx.allLeads,
@@ -139,29 +164,16 @@ const CRMProxyProvider = ({ children }: { children: ReactNode }) => {
     adminResetPassword: auth.adminResetPassword,
 
     addLead: async (leadData) => {
-      const newLead = await leadsCtx.addLead(leadData);
-      if (newLead) {
-        const dealSuccess = await dealsCtx.addDeal({
-          leadId: newLead.id,
-          title: 'Oportunidade: ' + newLead.name,
-          value: 0,
-          stage: DealStage.NEW,
-          probability: 10,
-          ownerId: newLead.ownerId || auth.currentUser?.id || '',
-          lossReason: '',
-          expectedCloseDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
-        });
-        if (!dealSuccess) {
-          // TODO: Consider rolling back lead creation here if strict atomicity is required by DB constraints, 
-          // but for now we warn and return false so UI doesn't clear form blindly.
-          alert("Atenção: O Lead foi salvo, mas houve erro ao criar o Negócio. Verifique o Pipeline.");
-          return false;
-        }
-        return true;
-      }
-      return false;
+      return createLeadWithDeal(leadData);
     },
-    bulkAddLeads: async (leads) => { for (const l of leads) await leadsCtx.addLead(l); },
+    bulkAddLeads: async (leads, onProgress) => {
+      let processed = 0;
+      for (const l of leads) {
+        await createLeadWithDeal(l);
+        processed++;
+        if (onProgress) onProgress(processed, leads.length);
+      }
+    },
     updateLeadData: leadsCtx.updateLeadData,
     assignLead: (lId, uId) => leadsCtx.assignLead(lId, uId, dealsCtx.deals.filter(d => d.leadId === lId)),
     deleteLead: leadsCtx.deleteLead,

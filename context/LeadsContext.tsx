@@ -66,12 +66,34 @@ export const LeadsProvider = ({ children }: { children: ReactNode }) => {
     };
 
     useEffect(() => {
-        if (currentUser) {
-            refreshLeads();
-        } else {
+        if (!currentUser) {
             setLeads([]);
             setActivities([]);
+            return;
         }
+
+        refreshLeads();
+
+        // Realtime Subscription (INSERT only)
+        const channel = supabase
+            .channel('leads-changes')
+            .on(
+                'postgres_changes',
+                { event: 'INSERT', schema: 'public', table: 'leads' },
+                (payload) => {
+                    const newLead = mapLeadFromDB(payload.new);
+                    // Prevent duplicate if we added it locally already (optimistic update check)
+                    setLeads(prev => {
+                        if (prev.some(l => l.id === newLead.id)) return prev;
+                        return [newLead, ...prev];
+                    });
+                }
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
     }, [currentUser]);
 
     const allLeads = useMemo(() => leads, [leads]);
