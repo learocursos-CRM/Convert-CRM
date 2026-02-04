@@ -11,7 +11,7 @@ import NewLeadModal from '../components/modals/NewLeadModal';
 import LeadDetailsModal from '../components/modals/LeadDetailsModal';
 import ImportWizard from '../components/modals/ImportWizard';
 import { FixedSizeList } from 'react-window';
-import AutoSizer from 'react-virtualized-auto-sizer';
+import { AutoSizer } from 'react-virtualized-auto-sizer';
 
 const Leads = () => {
     const navigate = useNavigate();
