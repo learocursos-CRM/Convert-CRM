@@ -8,6 +8,7 @@ export interface LeadFilters {
     status: string; // 'ALL' or specific status
     viewMode: 'queue' | 'history';
     showOnlySLA: boolean;
+    ownerId: string; // New filter
 }
 
 interface UseLeadFiltersProps {
@@ -24,6 +25,7 @@ export const useLeadFilters = ({ leads, getPipelineStatus, getSLA }: UseLeadFilt
         status: 'ALL',
         viewMode: 'queue',
         showOnlySLA: false,
+        ownerId: ''
     });
 
     const filteredLeads = useMemo(() => {
@@ -38,6 +40,9 @@ export const useLeadFilters = ({ leads, getPipelineStatus, getSLA }: UseLeadFilt
 
             // Status Filter
             const matchesStatus = filters.status === 'ALL' || label === filters.status;
+
+            // Owner Filter (New)
+            const matchesOwner = !filters.ownerId || lead.ownerId === filters.ownerId;
 
             // Search Logic
             const term = filters.searchTerm.toLowerCase();
@@ -54,7 +59,7 @@ export const useLeadFilters = ({ leads, getPipelineStatus, getSLA }: UseLeadFilt
             const sla = getSLA(lead);
             const matchesSLA = !filters.showOnlySLA || (sla.status === 'overdue' || sla.status === 'warning');
 
-            return matchesStatus && matchesSearch && matchesClass && matchesCourse && matchesSLA;
+            return matchesStatus && matchesSearch && matchesClass && matchesCourse && matchesSLA && matchesOwner;
         }).sort((a, b) => {
             // Sort logic (keep existing: new first, unless SLA mode)
             if (filters.showOnlySLA) return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
@@ -68,6 +73,7 @@ export const useLeadFilters = ({ leads, getPipelineStatus, getSLA }: UseLeadFilt
     const toggleSLA = () => setFilters(prev => ({ ...prev, showOnlySLA: !prev.showOnlySLA }));
     const setClassification = (cls: string) => setFilters(prev => ({ ...prev, classification: cls }));
     const setCourse = (crs: string) => setFilters(prev => ({ ...prev, course: crs }));
+    const setOwnerFilter = (id: string) => setFilters(prev => ({ ...prev, ownerId: id }));
 
     const clearFilters = () => setFilters({
         searchTerm: '',
@@ -75,7 +81,8 @@ export const useLeadFilters = ({ leads, getPipelineStatus, getSLA }: UseLeadFilt
         course: '',
         status: 'ALL',
         viewMode: 'queue',
-        showOnlySLA: false
+        showOnlySLA: false,
+        ownerId: ''
     });
 
     const availableCourses = useMemo(() => {
@@ -92,7 +99,8 @@ export const useLeadFilters = ({ leads, getPipelineStatus, getSLA }: UseLeadFilt
         toggleSLA,
         setClassification,
         setCourse,
+        setOwnerFilter, // New export
         clearFilters,
-        availableCourses // New export
+        availableCourses
     };
 };

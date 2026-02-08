@@ -32,7 +32,8 @@ const Leads = () => {
         setViewMode,
         toggleSLA,
         availableCourses, // New
-        setCourse // New
+        setCourse, // New
+        setOwnerFilter // New
     } = useLeadFilters({
         leads,
         getPipelineStatus: getLeadPipelineStatus,
@@ -184,6 +185,23 @@ const Leads = () => {
                     </select>
                 </div>
 
+                {/* Filtro de Responsável (Admin Only) */}
+                {isAdmin && (
+                    <div className="flex items-center gap-2 border-l border-gray-300 pl-4">
+                        <span className="text-sm text-gray-500 font-medium">Responsável:</span>
+                        <select
+                            className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500 max-w-[200px]"
+                            value={filters.ownerId}
+                            onChange={e => setOwnerFilter(e.target.value)}
+                        >
+                            <option value="">Todos os vendedores</option>
+                            {users.sort((a, b) => a.name.localeCompare(b.name)).map(user => (
+                                <option key={user.id} value={user.id}>{user.name}</option>
+                            ))}
+                        </select>
+                    </div>
+                )}
+
                 {filters.viewMode === 'queue' && (
                     <button onClick={toggleSLA} className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${filters.showOnlySLA ? 'bg-red-50 border-red-200 text-red-700' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
                         <AlertTriangle size={16} className={filters.showOnlySLA ? 'text-red-600' : 'text-gray-400'} />
@@ -296,17 +314,19 @@ const Leads = () => {
                 getClassificationColor={getClassificationColor}
             />
 
-            {showImportModal && (
-                <ImportWizard
-                    onClose={() => setShowImportModal(false)}
-                    onImport={bulkAddLeads}
-                    availableSources={availableSources}
-                    currentUser={currentUser}
-                    leads={leads}
-                    normalizeClassification={normalizeClassification}
-                />
-            )}
-        </div>
+            {
+                showImportModal && (
+                    <ImportWizard
+                        onClose={() => setShowImportModal(false)}
+                        onImport={bulkAddLeads}
+                        availableSources={availableSources}
+                        currentUser={currentUser}
+                        leads={leads}
+                        normalizeClassification={normalizeClassification}
+                    />
+                )
+            }
+        </div >
     );
 };
 

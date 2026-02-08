@@ -68,4 +68,41 @@ describe('useLeadFilters', () => {
         expect(result.current.filteredLeads).toHaveLength(1);
         expect(result.current.filteredLeads[0].name).toBe('Bob');
     });
+
+    it('filters by ownerId', () => {
+        const leadsWithOwner = [
+            { ...mockLeads[0], ownerId: 'user1' },
+            { ...mockLeads[1], ownerId: 'user2' },
+            { ...mockLeads[2], ownerId: 'user1' }
+        ];
+
+        const { result } = renderHook(() => useLeadFilters({
+            leads: leadsWithOwner,
+            getPipelineStatus: mockGetPipelineStatus,
+            getSLA: mockGetSLA
+        }));
+
+        // Default: All
+        expect(result.current.filteredLeads).toHaveLength(3);
+
+        // Filter by user1
+        act(() => {
+            result.current.setOwnerFilter('user1');
+        });
+        expect(result.current.filteredLeads).toHaveLength(2);
+        expect(result.current.filteredLeads.every(l => l.ownerId === 'user1')).toBe(true);
+
+        // Filter by user2 (Owner of Lead 2 'Bob')
+        act(() => {
+            result.current.setOwnerFilter('user2');
+        });
+        expect(result.current.filteredLeads).toHaveLength(1);
+        expect(result.current.filteredLeads[0].id).toBe('2');
+
+        // Clear
+        act(() => {
+            result.current.setOwnerFilter('');
+        });
+        expect(result.current.filteredLeads).toHaveLength(3);
+    });
 });
