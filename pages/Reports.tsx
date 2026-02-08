@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useCRM } from '../context/CRMContext';
 import {
   PieChart, Pie, Cell, Legend, ResponsiveContainer, Tooltip,
-  FunnelChart, Funnel, LabelList
+  BarChart, Bar, XAxis, YAxis, CartesianGrid
 } from 'recharts';
 import {
   Download, Calendar, Users, Target,
@@ -180,12 +180,24 @@ const Reports = () => {
           <div className="h-80 w-full flex justify-center">
             {funnelData.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
-                <FunnelChart>
-                  <Tooltip />
-                  <Funnel dataKey="value" data={funnelData} isAnimationActive>
-                    <LabelList position="right" fill="#374151" stroke="none" dataKey="label" />
-                  </Funnel>
-                </FunnelChart>
+                <BarChart
+                  layout="vertical"
+                  data={funnelData}
+                  margin={{ top: 20, right: 30, left: 40, bottom: 5 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={true} stroke="#e5e7eb" />
+                  <XAxis type="number" hide={false} tick={{ fontSize: 12, fill: '#6b7280' }} axisLine={false} tickLine={false} />
+                  <YAxis dataKey="name" type="category" width={120} tick={{ fontSize: 12, fill: '#374151', fontWeight: 500 }} axisLine={false} tickLine={false} />
+                  <Tooltip
+                    cursor={{ fill: '#f9fafb' }}
+                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                  />
+                  <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={24}>
+                    {funnelData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.fill} />
+                    ))}
+                  </Bar>
+                </BarChart>
               </ResponsiveContainer>
             ) : <div className="text-gray-400 m-auto">Sem dados</div>}
           </div>
