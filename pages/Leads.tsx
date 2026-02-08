@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useCRM } from '../context/CRMContext';
 import { Lead } from '../types';
-import { Plus, Search, Filter, Phone, Mail, Edit3, Trash2, Eye, Layers, Archive, AlertTriangle, UploadCloud } from 'lucide-react';
+import { Plus, Search, Filter, Phone, Mail, Edit3, Trash2, Eye, Layers, Archive, AlertTriangle, UploadCloud, FileText } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useLeadFilters } from '../hooks/useLeadFilters';
 // VirtualList removed for build fix
@@ -10,6 +10,7 @@ import { useLeadFilters } from '../hooks/useLeadFilters';
 import NewLeadModal from '../components/modals/NewLeadModal';
 import LeadDetailsModal from '../components/modals/LeadDetailsModal';
 import ImportWizard from '../components/modals/ImportWizard';
+import { generateLeadsPDF } from '../utils/pdfGenerator';
 // Virtualization imports removed for build stability
 
 
@@ -103,6 +104,15 @@ const Leads = () => {
         await deleteLead(leadId);
     };
 
+    const handleExportPDF = () => {
+        generateLeadsPDF({
+            leads: filteredLeads,
+            users,
+            getPipelineStatus: getLeadPipelineStatus,
+            getSLA: getLeadSLA
+        });
+    };
+
     const startEditing = (lead: Lead) => {
         setEditData({
             name: lead.name, company: lead.company, email: lead.email, phone: lead.phone,
@@ -127,7 +137,9 @@ const Leads = () => {
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                     <h2 className="text-3xl font-bold text-gray-800">Gestão de Leads</h2>
                     <div className="flex gap-2">
-
+                        <button onClick={handleExportPDF} className="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-gray-50 transition">
+                            <FileText size={18} /> Exportar PDF
+                        </button>
                         <button onClick={() => setShowImportModal(true)} className="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-gray-50 transition">
                             <UploadCloud size={18} /> Importar
                         </button>
