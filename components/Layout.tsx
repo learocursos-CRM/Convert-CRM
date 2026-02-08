@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Users, Briefcase, BarChart2, Settings, Search, LogOut, List } from 'lucide-react';
+import { LayoutDashboard, Users, Briefcase, BarChart2, Settings, LogOut, List } from 'lucide-react';
 import { useCRM } from '../context/CRMContext';
 import { NotificationCenter } from './NotificationCenter';
 
@@ -49,16 +49,7 @@ const Layout = () => {
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Top Header */}
         <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-8 shadow-sm">
-          <div className="flex items-center w-96 bg-gray-100 rounded-lg px-4 py-2 ring-1 ring-gray-200 focus-within:ring-2 focus-within:ring-indigo-500 transition-shadow">
-            <Search size={18} className="text-gray-400 mr-2" />
-            <input
-              type="text"
-              placeholder="Buscar leads, empresas..."
-              className="bg-transparent border-none outline-none text-sm w-full placeholder-gray-400"
-              value={globalSearch}
-              onChange={(e) => setGlobalSearch(e.target.value)}
-            />
-          </div>
+
 
           <div className="flex items-center gap-6">
             <NotificationCenter />
