@@ -2,14 +2,10 @@ import React, { createContext, useContext, useState, useEffect, ReactNode, useMe
 import { Lead, Activity, DealStage } from '../types';
 import { supabase } from '../services/supabase';
 import { useAuth } from './AuthContext';
+import { ensureDealsForLeads } from '../services/reconciliationService';
+import { calculateSLA, SLAData } from '../utils/sla';
 
-export type SLAStatus = 'normal' | 'warning' | 'overdue' | 'handled';
 
-export interface SLAData {
-    status: SLAStatus;
-    hoursDiff: number;
-    label: string;
-}
 
 interface LeadsContextType {
     leads: Lead[];
@@ -58,7 +54,10 @@ export const LeadsProvider = ({ children }: { children: ReactNode }) => {
                 supabase.from('activities').select('*').order('timestamp', { ascending: false }).limit(500)
             ]);
 
-            if (leadsRes.data) setLeads(leadsRes.data.map(mapLeadFromDB));
+            if (leadsRes.data) {
+                const mappedLeads = leadsRes.data.map(mapLeadFromDB);
+                setLeads(mappedLeads);
+            }
             if (activitiesRes.data) setActivities(activitiesRes.data as unknown as Activity[]);
         } catch (error) {
             console.error('[LEADS] Error refreshing leads:', error);
@@ -80,7 +79,7 @@ export const LeadsProvider = ({ children }: { children: ReactNode }) => {
             .on(
                 'postgres_changes',
                 { event: 'INSERT', schema: 'public', table: 'leads' },
-                (payload) => {
+                async (payload) => {
                     const newLead = mapLeadFromDB(payload.new);
                     // Prevent duplicate if we added it locally already (optimistic update check)
                     setLeads(prev => {
@@ -119,6 +118,7 @@ export const LeadsProvider = ({ children }: { children: ReactNode }) => {
         if (!safeClassification) { alert("Erro de Validação: Classificação inválida."); return null; }
 
         try {
+            // 1. Create Lead
             const { data, error } = await supabase.from('leads').insert({
                 name: leadData.name,
                 company: leadData.company,
@@ -132,6 +132,24 @@ export const LeadsProvider = ({ children }: { children: ReactNode }) => {
 
             if (error) throw error;
             const newLead = mapLeadFromDB(data);
+
+            // 2. Create Deal (Mandatory 1-1 relationship)
+            const { error: dealError } = await supabase.from('deals').insert({
+                lead_id: newLead.id,
+                title: 'Novo Lead / Interesse',
+                value: 0,
+                stage: DealStage.NEW,
+                probability: 10,
+                expected_close_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+                owner_id: newLead.ownerId || currentUser.id, // Match lead owner
+                loss_reason: null
+            });
+
+            if (dealError) {
+                console.error('CRITICAL: Failed to create deal for new lead', dealError);
+                // Optional: Rollback lead? For now, we rely on the reconciliation to fix it on next load if this fails.
+            }
+
             setLeads(prev => [newLead, ...prev]);
             await addActivity({ type: 'status_change', content: 'Lead criado no sistema', leadId: newLead.id, performer: currentUser.name });
             return newLead;
@@ -236,20 +254,7 @@ export const LeadsProvider = ({ children }: { children: ReactNode }) => {
     };
 
     const getLeadSLA = (lead: Lead, deals: { leadId: string, stage: DealStage }[], waitingList: { leadId: string }[]): SLAData => {
-        const now = new Date();
-        const created = new Date(lead.createdAt);
-        const hoursDiff = Math.floor((now.getTime() - created.getTime()) / (1000 * 60 * 60));
-
-        const deal = deals.find(d => d.leadId === lead.id);
-        if (deal && (deal.stage === DealStage.WON || deal.stage === DealStage.LOST)) return { status: 'handled', hoursDiff, label: 'Finalizado' };
-        if (waitingList.some(w => w.leadId === lead.id)) return { status: 'handled', hoursDiff, label: 'Lista de Espera' };
-
-        const hasHumanInteraction = activities.some(a => a.leadId === lead.id && ['call', 'email', 'meeting', 'note'].includes(a.type));
-        if (hasHumanInteraction) return { status: 'handled', hoursDiff, label: 'Atendido' };
-
-        if (hoursDiff >= 24) return { status: 'overdue', hoursDiff, label: 'SLA Estourado' };
-        if (hoursDiff >= 12) return { status: 'warning', hoursDiff, label: 'Atenção' };
-        return { status: 'normal', hoursDiff, label: 'No prazo' };
+        return calculateSLA(lead, activities, deals, waitingList);
     };
 
     return (

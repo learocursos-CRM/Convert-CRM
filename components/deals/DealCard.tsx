@@ -137,7 +137,9 @@ const DealCard: React.FC<DealCardProps> = ({
             </div>
 
             <div>
-                <h4 className="font-bold text-gray-900 text-sm leading-tight hover:text-indigo-600 cursor-pointer">{lead?.name || 'Lead Desconhecido'}</h4>
+                <h4 className="font-bold text-gray-900 text-sm leading-tight hover:text-indigo-600 cursor-pointer">
+                    {lead?.name || deal.title || 'Lead Desconhecido'}
+                </h4>
                 {lead && (
                     <div className="flex flex-col gap-2 mt-2">
                         <div className="flex items-start gap-1.5 text-xs text-indigo-700 font-medium bg-indigo-50 p-1.5 rounded">

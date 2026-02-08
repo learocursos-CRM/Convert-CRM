@@ -48,8 +48,22 @@ export const DealsProvider = ({ children }: { children: ReactNode }) => {
 
     const refreshDeals = async () => {
         try {
-            const { data } = await supabase.from('deals').select('*');
-            if (data) setDeals(data.map(mapDealFromDB));
+            // Fetch deals and leads (for validation)
+            const [dealsRes, leadsRes] = await Promise.all([
+                supabase.from('deals').select('*'),
+                supabase.from('leads').select('id')
+            ]);
+
+            if (dealsRes.data) {
+                const validLeadIds = new Set(leadsRes.data?.map(l => l.id) || []);
+                const validDeals = dealsRes.data.filter(d =>
+                    // Rule 1: Must have a valid Lead associated
+                    d.lead_id && validLeadIds.has(d.lead_id)
+                );
+
+                // Note: We are strictly shielding. Only valid deals are set in state.
+                setDeals(validDeals.map(mapDealFromDB));
+            }
         } catch (error) {
             console.error('[DEALS] Error refreshing deals:', error);
         }
@@ -69,12 +83,18 @@ export const DealsProvider = ({ children }: { children: ReactNode }) => {
             .on(
                 'postgres_changes',
                 { event: 'INSERT', schema: 'public', table: 'deals' },
-                (payload) => {
+                async (payload) => {
                     const newDeal = mapDealFromDB(payload.new);
-                    setDeals(prev => {
-                        if (prev.some(d => d.id === newDeal.id)) return prev;
-                        return [...prev, newDeal];
-                    });
+
+                    // Shielding: Verify Lead Exists before adding to UI
+                    const { count } = await supabase.from('leads').select('id', { count: 'exact', head: true }).eq('id', newDeal.leadId);
+
+                    if (count && count > 0) {
+                        setDeals(prev => {
+                            if (prev.some(d => d.id === newDeal.id)) return prev;
+                            return [...prev, newDeal];
+                        });
+                    }
                 }
             )
             .subscribe();

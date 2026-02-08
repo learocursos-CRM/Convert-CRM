@@ -1,0 +1,15 @@
+node_modules
+.git
+.env
+.env.local
+.vscode
+.idea
+.vercel
+dist
+coverage
+test-results
+logs
+*.log
+.temp_ag_kit
+testsprite_tests
+sanity.test.ts

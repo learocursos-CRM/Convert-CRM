@@ -12,9 +12,8 @@ import { useDealFilters } from '../hooks/useDealFilters';
 
 const Deals = () => {
     const {
-        deals, leads, waitingList, updateDealStage, updateDeal, deleteDeal,
+        deals, leads, allLeads, waitingList, updateDealStage, updateDeal, deleteDeal,
         moveToWaitingList, restoreFromWaitingList, lossReasons, waitingReasons,
-        // globalSearch - REMOVED
     } = useCRM();
 
     // Hook Filters
@@ -41,7 +40,7 @@ const Deals = () => {
         DealStage.LOST
     ];
 
-    const getLead = (id: string) => leads.find(l => l.id === id);
+    const getLead = (id: string) => allLeads.find(l => l.id === id);
 
     // getDealsByStage is provided by the hook now
 

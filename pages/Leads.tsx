@@ -222,7 +222,7 @@ const Leads = () => {
                                             )}
                                         </div>
                                         <div className="col-span-2 flex flex-col justify-center">
-                                            <span className={`text-xs font-bold px-2 py-0.5 rounded w-fit ${sla.status === 'overdue' ? 'bg-red-100 text-red-700' : sla.status === 'warning' ? 'bg-yellow-100 text-yellow-800' : sla.status === 'handled' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
+                                            <span className={`text-xs font-bold px-2 py-0.5 rounded w-fit ${sla.status === 'overdue' ? 'bg-red-100 text-red-700' : sla.status === 'warning' ? 'bg-yellow-100 text-yellow-800' : sla.status === 'waiting' ? 'bg-blue-100 text-blue-700' : sla.status === 'handled' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
                                                 {sla.label}
                                             </span>
                                             <span className="text-[10px] text-gray-400 mt-1">Desde: {new Date(lead.createdAt).toLocaleDateString()}</span>
