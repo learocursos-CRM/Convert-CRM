@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useCRM } from '../context/CRMContext';
 import { Lead } from '../types';
-import { Plus, Search, Filter, Phone, Mail, Edit3, Trash2, Eye, Layers, Archive, AlertTriangle } from 'lucide-react';
+import { Plus, Search, Filter, Phone, Mail, Edit3, Trash2, Eye, Layers, Archive, AlertTriangle, UploadCloud } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useLeadFilters } from '../hooks/useLeadFilters';
 // VirtualList removed for build fix
@@ -128,6 +128,9 @@ const Leads = () => {
                     <h2 className="text-3xl font-bold text-gray-800">Gestão de Leads</h2>
                     <div className="flex gap-2">
 
+                        <button onClick={() => setShowImportModal(true)} className="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-gray-50 transition">
+                            <UploadCloud size={18} /> Importar
+                        </button>
                         <button onClick={() => { setFormData({ ...formData, source: availableSources[0] }); setShowModal(true); }} className="bg-indigo-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-indigo-700 transition shadow-lg">
                             <Plus size={18} /> Novo Lead
                         </button>
