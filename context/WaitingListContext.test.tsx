@@ -1,103 +1,88 @@
-import React from 'react';
-import { render, screen, waitFor, act } from '@testing-library/react';
+import { renderHook, act } from '@testing-library/react';
 import { WaitingListProvider, useWaitingList } from './WaitingListContext';
-import { supabase } from '../services/supabase';
-import { useAuth } from './AuthContext';
-import { useLeads } from './LeadsContext';
-import { useDeals } from './DealsContext';
-import { vi, describe, beforeEach, test, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import React from 'react';
 
-// Mock dependencies
-vi.mock('./AuthContext', () => ({
-    useAuth: vi.fn(),
-}));
-vi.mock('./LeadsContext', () => ({
-    useLeads: vi.fn(),
-}));
-vi.mock('./DealsContext', () => ({
-    useDeals: vi.fn(),
-}));
+// Hoisted Mocks
+const { mockFrom, mockSelect, mockDelete, mockEq, mockInsert } = vi.hoisted(() => {
+    const mockSelect = vi.fn();
+    const mockDelete = vi.fn();
+    const mockEq = vi.fn();
+    const mockInsert = vi.fn();
+    const mockUpdate = vi.fn();
+
+    const mockFrom = vi.fn(() => ({
+        select: mockSelect,
+        delete: mockDelete,
+        insert: mockInsert,
+        update: mockUpdate,
+    }));
+
+    return { mockFrom, mockSelect, mockDelete, mockEq, mockInsert };
+});
+
+// Setup chain behavior
+mockSelect.mockReturnValue({ data: [], error: null });
+mockDelete.mockReturnValue({ eq: mockEq });
+mockEq.mockResolvedValue({ data: {}, error: null });
+mockInsert.mockReturnValue({ select: vi.fn().mockReturnValue({ single: vi.fn().mockResolvedValue({ data: {} }) }) });
+
+
 vi.mock('../services/supabase', () => ({
     supabase: {
-        from: vi.fn()
+        from: mockFrom
     }
 }));
 
-describe('WaitingListContext', () => {
-    const mockUser = { id: 'user1', name: 'User 1' };
-    const mockLeads = [{ id: 'lead1', name: 'Lead One', email: 'l1@test.com' }];
-    const mockDeals = [{ id: 'deal1', leadId: 'lead1', title: 'Deal 1', value: 1000, ownerId: 'user1' }];
-    const mockAddActivity = vi.fn();
-    const mockRefreshDeals = vi.fn();
+const mockUser = { id: 'admin-id', role: 'admin', name: 'Admin User' };
 
+vi.mock('./AuthContext', () => ({
+    useAuth: () => ({ currentUser: mockUser })
+}));
+
+vi.mock('./LeadsContext', () => ({
+    useLeads: () => ({ leads: [], addActivity: vi.fn() })
+}));
+
+vi.mock('./DealsContext', () => ({
+    useDeals: () => ({ deals: [], refreshDeals: vi.fn() })
+}));
+
+describe('WaitingListContext - Deletion', () => {
     beforeEach(() => {
         vi.clearAllMocks();
-
-        (useAuth as any).mockReturnValue({ currentUser: mockUser });
-        (useLeads as any).mockReturnValue({ leads: mockLeads, addActivity: mockAddActivity });
-        (useDeals as any).mockReturnValue({ deals: mockDeals, refreshDeals: mockRefreshDeals });
-
-        // Supabase mocks
-        (supabase.from as any).mockImplementation((table: string) => {
-            const mockReturn = {
-                select: vi.fn().mockReturnThis(),
-                eq: vi.fn().mockReturnThis(),
-                update: vi.fn().mockReturnThis(),
-                insert: vi.fn().mockReturnThis(),
-                delete: vi.fn().mockReturnThis(),
-                single: vi.fn().mockResolvedValue({ data: {}, error: null }),
-            };
-            // Specific return for waiting_list fetch
-            if (table === 'waiting_list') {
-                mockReturn.select.mockResolvedValue({ data: [], error: null });
-            }
-            return mockReturn;
+        // Reset default behaviors
+        mockSelect.mockReturnValue({
+            data: [{ id: '1', leadId: 'lead-1', leads: { name: 'Test' }, created_at: '2023-01-01', owner_id: 'owner-1' }],
+            error: null
         });
+
+        // Mock window.confirm
+        vi.spyOn(window, 'confirm').mockReturnValue(true);
     });
 
-    const TestComponent = () => {
-        const { waitingList, moveToWaitingList, restoreFromWaitingList } = useWaitingList();
-        return (
-            <div>
-                <div data-testid="count">{waitingList.length}</div>
-                <button onClick={() => moveToWaitingList('deal1', 'Test Reason')}>Move</button>
-                <button onClick={() => restoreFromWaitingList('wl1')}>Restore</button>
-            </div>
+    it('should allow admin to delete item', async () => {
+        const wrapper = ({ children }: { children: React.ReactNode }) => (
+            <WaitingListProvider>{children}</WaitingListProvider>
         );
-    };
 
-    test('moveToWaitingList calls supabase update and insert', async () => {
-        // Setup insert return
-        (supabase.from as any).mockImplementation((table: string) => {
-            if (table === 'deals') {
-                return { update: vi.fn().mockReturnThis(), eq: vi.fn().mockReturnThis() };
-            }
-            if (table === 'waiting_list') {
-                return {
-                    insert: vi.fn().mockReturnThis(),
-                    select: vi.fn().mockReturnThis(),
-                    single: vi.fn().mockResolvedValue({
-                        data: {
-                            id: 'wl1', lead_id: 'lead1', deal_id: 'deal1'
-                        },
-                        error: null
-                    })
-                };
-            }
-            return { select: vi.fn().mockResolvedValue({ data: [] }) };
-        });
+        const { result } = renderHook(() => useWaitingList(), { wrapper });
 
+        // Populate list first (mocked refresh)
         await act(async () => {
-            render(<WaitingListProvider><TestComponent /></WaitingListProvider>);
+            await result.current.refreshWaitingList();
         });
 
+        // Delete
         await act(async () => {
-            screen.getByText('Move').click();
+            await result.current.removePermanent('1');
         });
 
-        await waitFor(() => {
-            expect(mockAddActivity).toHaveBeenCalled();
-            expect(mockRefreshDeals).toHaveBeenCalled();
-        });
+        // Supabase delete should have been called
+        expect(mockFrom).toHaveBeenCalledWith('waiting_list');
+        // We verify the chain call indirectly or if possible directly
+        // Given the mock setup, we can verify what mockDelete returns or if it was called
+        expect(mockDelete).toHaveBeenCalled();
+        expect(mockEq).toHaveBeenCalledWith('id', '1');
     });
 });

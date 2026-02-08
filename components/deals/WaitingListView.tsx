@@ -1,16 +1,17 @@
 import React, { useMemo, useState } from 'react';
 import { useCRM } from '../../context/CRMContext';
 import { WaitingListItem } from '../../types';
-import { Filter, FileText, GraduationCap, Clock, PauseCircle, Undo2 } from 'lucide-react';
+import { Filter, FileText, GraduationCap, Clock, PauseCircle, Undo2, Trash2 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
 interface WaitingListViewProps {
     waitingList: WaitingListItem[];
     onRestore: (id: string) => void;
+    onDelete: (id: string) => void;
 }
 
-const WaitingListView: React.FC<WaitingListViewProps> = ({ waitingList, onRestore }) => {
+const WaitingListView: React.FC<WaitingListViewProps> = ({ waitingList, onRestore, onDelete }) => {
     const { leads } = useCRM();
     const getLead = (id: string) => leads.find(l => l.id === id);
 
@@ -140,8 +141,16 @@ const WaitingListView: React.FC<WaitingListViewProps> = ({ waitingList, onRestor
                                             <button
                                                 onClick={() => onRestore(item.id)}
                                                 className="text-xs bg-white border border-green-200 text-green-700 px-3 py-1.5 rounded hover:bg-green-50 hover:border-green-300 transition flex items-center gap-1 ml-auto font-medium"
+                                                title="Retomar para o Pipeline"
                                             >
                                                 <Undo2 size={14} /> Retomar
+                                            </button>
+                                            <button
+                                                onClick={() => onDelete(item.id)}
+                                                className="text-xs bg-white border border-red-200 text-red-700 px-3 py-1.5 rounded hover:bg-red-50 hover:border-red-300 transition flex items-center gap-1 ml-2 font-medium"
+                                                title="Excluir permanentemente (Desistência)"
+                                            >
+                                                <Trash2 size={14} />
                                             </button>
                                         </td>
                                     </tr>

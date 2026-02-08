@@ -43,6 +43,7 @@ interface CRMContextType {
   moveToWaitingList: (dealId: string, reason: string, notes?: string) => Promise<void>;
   restoreFromWaitingList: (itemId: string) => Promise<void>;
   updateWaitingListItem: (id: string, data: Partial<WaitingListItem>) => Promise<void>;
+  removePermanent: (itemId: string) => Promise<void>;
 
   addActivity: (activity: Omit<Activity, 'id' | 'timestamp'>) => Promise<boolean>;
   getLeadActivities: (leadId: string) => Activity[];
@@ -186,6 +187,7 @@ const CRMProxyProvider = ({ children }: { children: ReactNode }) => {
     moveToWaitingList: waitingCtx.moveToWaitingList,
     restoreFromWaitingList: waitingCtx.restoreFromWaitingList,
     updateWaitingListItem: waitingCtx.updateWaitingListItem,
+    removePermanent: waitingCtx.removePermanent,
 
     addActivity: leadsCtx.addActivity,
     getLeadActivities: leadsCtx.getLeadActivities,

@@ -13,7 +13,7 @@ import { useDealFilters } from '../hooks/useDealFilters';
 const Deals = () => {
     const {
         deals, leads, allLeads, waitingList, updateDealStage, updateDeal, deleteDeal,
-        moveToWaitingList, restoreFromWaitingList, lossReasons, waitingReasons,
+        moveToWaitingList, restoreFromWaitingList, removePermanent, lossReasons, waitingReasons,
     } = useCRM();
 
     // Hook Filters
@@ -148,6 +148,7 @@ const Deals = () => {
                 <WaitingListView
                     waitingList={waitingList}
                     onRestore={restoreFromWaitingList}
+                    onDelete={removePermanent}
                 />
             )}
 

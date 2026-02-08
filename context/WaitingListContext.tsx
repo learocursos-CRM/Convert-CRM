@@ -12,6 +12,7 @@ interface WaitingListContextType {
     restoreFromWaitingList: (itemId: string) => Promise<void>;
     updateWaitingListItem: (id: string, data: Partial<WaitingListItem>) => Promise<void>;
     refreshWaitingList: () => Promise<void>;
+    removePermanent: (itemId: string) => Promise<void>;
 }
 
 const WaitingListContext = createContext<WaitingListContextType | undefined>(undefined);
@@ -152,9 +153,42 @@ export const WaitingListProvider = ({ children }: { children: ReactNode }) => {
         } catch (e) { console.error(e); }
     };
 
+    const removePermanent = async (itemId: string) => {
+        if (!currentUser) return;
+        const item = waitingList.find(w => w.id === itemId);
+        if (!item) return;
+
+        // Security Check: Only Admin or Owner can delete
+        if (currentUser.role !== 'admin' && currentUser.id !== item.ownerId) {
+            alert('Permissão negada. Apenas o administrador ou o dono do lead podem excluir este item.');
+            return;
+        }
+
+        if (!window.confirm(`Tem certeza que deseja excluir permanentemente este lead da Lista de Espera?\n\nEsta ação representa a DESISTÊNCIA do cliente e não pode ser desfeita.`)) {
+            return;
+        }
+
+        try {
+            await supabase.from('waiting_list').delete().eq('id', itemId);
+            // Also ensure deal is closed/deleted or handled appropriately (In this case, just audit log, since lead remains)
+
+            setWaitingList(prev => prev.filter(w => w.id !== itemId));
+
+            await addActivity({
+                type: 'status_change',
+                content: `Lead excluído permanentemente da Lista de Espera. Motivo: Desistência/Cancelamento. (Realizado por: ${currentUser.name})`,
+                leadId: item.leadId,
+                performer: currentUser.name
+            });
+
+        } catch (e: any) {
+            alert('Erro ao excluir: ' + e.message);
+        }
+    };
+
     return (
         <WaitingListContext.Provider value={{
-            waitingList, waitingReasons, moveToWaitingList, restoreFromWaitingList, updateWaitingListItem, refreshWaitingList
+            waitingList, waitingReasons, moveToWaitingList, restoreFromWaitingList, updateWaitingListItem, refreshWaitingList, removePermanent
         }}>
             {children}
         </WaitingListContext.Provider>
